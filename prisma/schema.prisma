@@ -32,3 +32,14 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+model CartUpsellSettings {
+  id           String   @id @default(cuid())
+  shop         String   @unique
+  direction    String   @default("ltr") // "ltr" | "rtl"
+  sourceType   String   @default("collection") // "collection" | "manual"
+  collectionId String? // Shopify collection GID, used when sourceType is "collection"
+  productIds   String   @default("[]") // JSON array of Shopify product GIDs, used when sourceType is "manual"
+  displayMode  String   @default("list") // "list" | "slider"
+  updatedAt    DateTime @updatedAt
+}
