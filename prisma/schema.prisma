@@ -41,5 +41,25 @@ model CartUpsellSettings {
   collectionId String? // Shopify collection GID, used when sourceType is "collection"
   productIds   String   @default("[]") // JSON array of Shopify product GIDs, used when sourceType is "manual"
   displayMode  String   @default("list") // "list" | "slider"
-  updatedAt    DateTime @updatedAt
+
+  // Design overrides — null means "inherit from the store's theme"
+  headingText       String?
+  buttonColor       String?
+  buttonTextColor   String?
+  buttonBorderRadius Int?
+
+  updatedAt DateTime @updatedAt
+}
+
+model UpsellEvent {
+  id        String   @id @default(cuid())
+  shop      String
+  type      String // "add_to_cart" | "purchase"
+  productId String // numeric Shopify product id, as a string
+  quantity  Int      @default(1)
+  amount    Float? // line revenue, only set for "purchase" events
+  createdAt DateTime @default(now())
+
+  @@index([shop, type])
+  @@index([shop, productId])
 }

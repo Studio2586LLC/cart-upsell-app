@@ -1,4 +1,4 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
@@ -27,6 +27,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       direction: "ltr",
       displayMode: "list",
       currency: "USD",
+      headingText: null,
+      buttonColor: null,
+      buttonTextColor: null,
+      buttonBorderRadius: null,
       products: [],
     });
   }
@@ -38,6 +42,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const direction = settings?.direction ?? "ltr";
   const displayMode = settings?.displayMode ?? "list";
   const sourceType = settings?.sourceType ?? "collection";
+  const headingText = settings?.headingText ?? null;
+  const buttonColor = settings?.buttonColor ?? null;
+  const buttonTextColor = settings?.buttonTextColor ?? null;
+  const buttonBorderRadius = settings?.buttonBorderRadius ?? null;
 
   const shopResponse = await admin.graphql(
     `#graphql
@@ -121,5 +129,41 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     })
     .filter((product): product is NonNullable<typeof product> => product !== null);
 
-  return Response.json({ direction, displayMode, currency, products });
+  return Response.json({
+    direction,
+    displayMode,
+    currency,
+    headingText,
+    buttonColor,
+    buttonTextColor,
+    buttonBorderRadius,
+    products,
+  });
+};
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { session } = await authenticate.public.appProxy(request);
+
+  if (!session) {
+    return Response.json({ ok: false }, { status: 401 });
+  }
+
+  const body = await request.json().catch(() => null);
+  const productId = Number(body?.productId);
+  const quantity = Number(body?.quantity) || 1;
+
+  if (!productId) {
+    return Response.json({ ok: false }, { status: 400 });
+  }
+
+  await prisma.upsellEvent.create({
+    data: {
+      shop: session.shop,
+      type: "add_to_cart",
+      productId: String(productId),
+      quantity,
+    },
+  });
+
+  return Response.json({ ok: true });
 };
