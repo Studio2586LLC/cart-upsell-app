@@ -253,6 +253,8 @@ function DateRangeControl({
     <Popover
       active={popoverActive}
       onClose={togglePopover}
+      fluidContent
+      preferredAlignment="right"
       activator={
         <Button onClick={togglePopover} icon={CalendarIcon} disclosure>
           {formatRangeLabel(from, to, isAllTime)}
@@ -260,14 +262,20 @@ function DateRangeControl({
       }
     >
       <InlineStack gap="0" wrap={false}>
-        <div style={{ width: 180, borderRight: "1px solid var(--p-color-border)" }}>
+        <div
+          style={{
+            width: 160,
+            flexShrink: 0,
+            borderRight: "1px solid var(--p-color-border)",
+          }}
+        >
           <OptionList
             selected={currentPresetLabel ? [currentPresetLabel] : []}
             onChange={handlePresetSelect}
             options={PRESETS.map((preset) => ({ value: preset.label, label: preset.label }))}
           />
         </div>
-        <div style={{ padding: "16px" }}>
+        <div style={{ padding: "16px", minWidth: 580 }}>
           <BlockStack gap="400">
             <DatePicker
               month={month}
