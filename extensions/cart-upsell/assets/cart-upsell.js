@@ -229,8 +229,11 @@
   // Horizon's own drawer refresh is driven by an internal, undocumented
   // event class (@shopify/events' CartLinesUpdateEvent) that isn't safe to
   // hand-construct. Instead, re-fetch the drawer's section HTML via the
-  // public Section Rendering API and swap it in directly — this is what
-  // actually refreshes the line items/summary after our add-to-cart call.
+  // public Section Rendering API and swap in just the inner content — this
+  // is what actually refreshes the line items/summary after our add-to-cart
+  // call. We deliberately swap only `.cart-drawer__inner`, not the whole
+  // section, so the surrounding <dialog>/<theme-drawer> keeps its open
+  // state and animations instead of being destroyed mid-interaction.
   function refreshCartDrawer() {
     return fetch(window.Shopify.routes.root + '?sections=cart-drawer-section')
       .then(function (r) {
@@ -238,9 +241,15 @@
       })
       .then(function (sections) {
         var html = sections['cart-drawer-section'];
-        var current = document.getElementById('shopify-section-cart-drawer-section');
-        if (html && current) {
-          current.outerHTML = html;
+        if (!html) return;
+
+        var freshInner = new DOMParser()
+          .parseFromString(html, 'text/html')
+          .querySelector('.cart-drawer__inner');
+        var currentInner = document.querySelector('cart-drawer-component .cart-drawer__inner');
+
+        if (freshInner && currentInner) {
+          currentInner.replaceWith(freshInner);
         }
       })
       .catch(function () {});
