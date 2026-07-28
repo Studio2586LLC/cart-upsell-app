@@ -71,6 +71,11 @@
 
 .cart-upsell__track--slider {
   flex-direction: row;
+  /* Each slide is 0 0 100%; a gap here would offset the percentage-based
+     transform math by --gap per step, drifting slides further off with
+     each index. Spacing isn't needed anyway since only one slide shows
+     at a time. */
+  gap: 0;
   transition: transform 0.3s ease;
   touch-action: pan-y;
 }
