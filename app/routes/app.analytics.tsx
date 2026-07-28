@@ -264,7 +264,7 @@ function DateRangeControl({
       <InlineStack gap="0" wrap={false}>
         <div
           style={{
-            width: 160,
+            width: 140,
             flexShrink: 0,
             borderRight: "1px solid var(--p-color-border)",
           }}
@@ -275,7 +275,7 @@ function DateRangeControl({
             options={PRESETS.map((preset) => ({ value: preset.label, label: preset.label }))}
           />
         </div>
-        <div style={{ padding: "16px", minWidth: 580 }}>
+        <div style={{ padding: "16px", width: 340 }}>
           <BlockStack gap="400">
             <DatePicker
               month={month}
@@ -284,7 +284,6 @@ function DateRangeControl({
               selected={pendingRange}
               onChange={(range) => setPendingRange(range)}
               allowRange
-              multiMonth
             />
             <InlineStack align="end" gap="200">
               <Button onClick={() => setPopoverActive(false)}>Cancel</Button>
