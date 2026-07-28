@@ -214,17 +214,9 @@
       .then(function (response) {
         if (!response.ok) throw new Error('Cart add failed');
         trackAddToCart(product.productId);
-        return fetch(window.Shopify.routes.root + 'cart.js').then(function (r) {
-          return r.json();
-        });
+        return refreshCartDrawer();
       })
-      .then(function (cart) {
-        document.dispatchEvent(
-          new CustomEvent('cart:update', {
-            bubbles: true,
-            detail: { resource: cart, data: { itemCount: cart.item_count } },
-          }),
-        );
+      .then(function () {
         button.textContent = '✓';
         button.style.opacity = '0.5';
       })
@@ -232,6 +224,26 @@
         button.disabled = false;
         button.textContent = originalText;
       });
+  }
+
+  // Horizon's own drawer refresh is driven by an internal, undocumented
+  // event class (@shopify/events' CartLinesUpdateEvent) that isn't safe to
+  // hand-construct. Instead, re-fetch the drawer's section HTML via the
+  // public Section Rendering API and swap it in directly — this is what
+  // actually refreshes the line items/summary after our add-to-cart call.
+  function refreshCartDrawer() {
+    return fetch(window.Shopify.routes.root + '?sections=cart-drawer-section')
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (sections) {
+        var html = sections['cart-drawer-section'];
+        var current = document.getElementById('shopify-section-cart-drawer-section');
+        if (html && current) {
+          current.outerHTML = html;
+        }
+      })
+      .catch(function () {});
   }
 
   function trackAddToCart(productId) {
