@@ -2,7 +2,7 @@
 
 client_id = "0d75d9beda6410a0d92cbb7a54e1f678"
 name = "cart-upsell"
-application_url = "https://example.com"
+application_url = "https://cart-upsell-app-production.up.railway.app"
 embedded = true
 
 [build]
