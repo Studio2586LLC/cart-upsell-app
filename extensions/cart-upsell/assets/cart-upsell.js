@@ -70,7 +70,7 @@
           .slice(0, MAX_ITEMS);
 
         if (products.length === 0) {
-          root.remove();
+          root.hidden = true;
           return;
         }
 
@@ -113,7 +113,9 @@
         root.hidden = false;
       })
       .catch(function () {
-        root.remove();
+        // Keep the initialized root mounted. Removing it would trigger the
+        // drawer observer, which would immediately mount and fetch again.
+        root.hidden = true;
       });
   }
 

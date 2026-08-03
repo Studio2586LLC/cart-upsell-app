@@ -1,4 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
@@ -23,7 +24,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.public.appProxy(request);
 
   if (!session || !admin) {
-    return Response.json({
+    return json({
       direction: "ltr",
       displayMode: "list",
       currency: "USD",
@@ -129,7 +130,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     })
     .filter((product): product is NonNullable<typeof product> => product !== null);
 
-  return Response.json({
+  return json({
     direction,
     displayMode,
     currency,
@@ -145,7 +146,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.public.appProxy(request);
 
   if (!session) {
-    return Response.json({ ok: false }, { status: 401 });
+    return json({ ok: false }, { status: 401 });
   }
 
   const body = await request.json().catch(() => null);
@@ -153,7 +154,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const quantity = Number(body?.quantity) || 1;
 
   if (!productId) {
-    return Response.json({ ok: false }, { status: 400 });
+    return json({ ok: false }, { status: 400 });
   }
 
   await prisma.upsellEvent.create({
@@ -165,5 +166,5 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     },
   });
 
-  return Response.json({ ok: true });
+  return json({ ok: true });
 };
