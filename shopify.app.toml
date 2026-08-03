@@ -33,6 +33,6 @@ use_legacy_install_flow = false
 redirect_urls = [ ]
 
 [app_proxy]
-url = "https://example.com/apps/proxy"
+url = "https://cart-upsell-app-production.up.railway.app/apps/proxy"
 subpath = "cart-upsell"
 prefix = "apps"
