@@ -83,10 +83,10 @@ Please read the [documentation for @shopify/shopify-app-remix](https://www.npmjs
 
 ### Application Storage
 
-This template uses [Prisma](https://www.prisma.io/) to store session data, by default using an [SQLite](https://www.sqlite.org/index.html) database.
-The database is defined as a Prisma schema in `prisma/schema.prisma`.
+This app uses [Prisma](https://www.prisma.io/) with PostgreSQL for Shopify sessions, merchant settings, and upsell analytics.
+The database is defined in `prisma/schema.prisma`, and its connection is provided by the required `DATABASE_URL` environment variable.
 
-This use of SQLite works in production if your app runs as a single instance.
+PostgreSQL provides durable shared storage for production deployments and allows the application service to run more than one replica.
 The database that works best for you depends on the data your app needs and how it is queried.
 You can run your database of choice on a server yourself or host it with a SaaS company.
 Here's a short list of databases providers that provide a free tier to get started:
@@ -98,7 +98,25 @@ Here's a short list of databases providers that provide a free tier to get start
 | Redis      | Key-value        | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-redis), [Amazon MemoryDB](https://aws.amazon.com/memorydb/)                                                                                                        |
 | MongoDB    | NoSQL / Document | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-mongodb), [MongoDB Atlas](https://www.mongodb.com/atlas/database)                                                                                                  |
 
-To use one of these, you can use a different [datasource provider](https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#datasource) in your `schema.prisma` file, or a different [SessionStorage adapter package](https://github.com/Shopify/shopify-api-js/blob/main/packages/shopify-api/docs/guides/session-storage.md).
+To use another database, change the [datasource provider](https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#datasource) in `schema.prisma` and create a compatible migration history.
+
+#### Railway PostgreSQL setup
+
+1. Add a PostgreSQL service to the same Railway project and environment as the application.
+2. In the application service, add a reference variable named `DATABASE_URL` whose value is `${{Postgres.DATABASE_URL}}`. Replace `Postgres` if the database service has a different name.
+3. Deploy the application. Its `docker-start` command runs `prisma migrate deploy` before starting the Remix server, so an empty database is initialized automatically.
+4. Configure scheduled backups on the PostgreSQL volume before accepting production traffic.
+
+The committed PostgreSQL migration is a new baseline and expects an empty PostgreSQL database. If an existing SQLite production database contains data, export and import its `Session`, `CartUpsellSettings`, and `UpsellEvent` rows before directing production traffic to PostgreSQL. Keep the old application available until the row counts and merchant settings have been verified.
+
+For local development, start a local PostgreSQL database, copy `.env.example` to `.env`, adjust the connection string, and run:
+
+```shell
+npm run setup
+npm run dev
+```
+
+Create future schema migrations with `npm exec prisma migrate dev -- --name <migration-name>` and commit the generated migration directory.
 
 ### Build
 
@@ -266,7 +284,7 @@ This will not affect production, since tunnels are only for local development.
 
 ### Using MongoDB and Prisma
 
-By default this template uses SQLlite as the database. It is recommended to move to a persisted database for production. If you choose to use MongoDB, you will need to make some modifications to the schema and prisma configuration. For more information please see the [Prisma MongoDB documentation](https://www.prisma.io/docs/orm/overview/databases/mongodb).
+This app is configured for PostgreSQL. Switching to MongoDB would require modifications to the schema, migration workflow, and Prisma configuration. For more information please see the [Prisma MongoDB documentation](https://www.prisma.io/docs/orm/overview/databases/mongodb).
 
 Alternatively you can use a MongDB database directly with the [MongoDB session storage adapter](https://github.com/Shopify/shopify-app-js/tree/main/packages/apps/session-storage/shopify-app-session-storage-mongodb).
 
