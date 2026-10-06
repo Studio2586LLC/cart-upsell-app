@@ -17,7 +17,7 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
 type Direction = "ltr" | "rtl";
-type SourceType = "collection" | "manual";
+type SourceType = "collection" | "manual" | "automatic";
 type DisplayMode = "list" | "slider";
 
 type PickedResource = { id: string; title: string };
@@ -80,7 +80,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const direction: Direction =
     formData.get("direction")?.toString() === "rtl" ? "rtl" : "ltr";
   const sourceType: SourceType =
-    formData.get("sourceType")?.toString() === "manual" ? "manual" : "collection";
+    formData.get("sourceType")?.toString() === "automatic"
+      ? "automatic"
+      : formData.get("sourceType")?.toString() === "manual"
+        ? "manual"
+        : "collection";
   const displayMode: DisplayMode =
     formData.get("displayMode")?.toString() === "slider" ? "slider" : "list";
   const collectionId = formData.get("collectionId")?.toString() || null;
@@ -95,15 +99,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       direction,
       sourceType,
       displayMode,
-      collectionId: sourceType === "collection" ? collectionId : null,
-      productIds: JSON.stringify(sourceType === "manual" ? productIds : []),
+      collectionId,
+      productIds: JSON.stringify(productIds),
     },
     update: {
       direction,
       sourceType,
       displayMode,
-      collectionId: sourceType === "collection" ? collectionId : null,
-      productIds: JSON.stringify(sourceType === "manual" ? productIds : []),
+      collectionId,
+      productIds: JSON.stringify(productIds),
     },
   });
 
@@ -225,6 +229,13 @@ export default function Settings() {
                   </Text>
                   <InlineStack gap="400">
                     <RadioButton
+                      label="Automatic suggestions"
+                      checked={sourceType === "automatic"}
+                      id="source-automatic"
+                      name="sourceType"
+                      onChange={() => setSourceType("automatic")}
+                    />
+                    <RadioButton
                       label="From a collection"
                       checked={sourceType === "collection"}
                       id="source-collection"
@@ -240,7 +251,44 @@ export default function Settings() {
                     />
                   </InlineStack>
 
-                  {sourceType === "collection" ? (
+                  {sourceType === "automatic" ? (
+                    <BlockStack gap="300">
+                      <Text as="p" tone="subdued">
+                        Selected products appear first. Related products for
+                        items in the cart fill the remaining spots, followed
+                        by products from the fallback collection.
+                      </Text>
+                      <Button onClick={pickProducts}>Choose fallback products</Button>
+                      {products.map((product) => (
+                        <InlineStack
+                          key={product.id}
+                          align="space-between"
+                          blockAlign="center"
+                        >
+                          <Text as="span">{product.title}</Text>
+                          <Button
+                            onClick={() => removeProduct(product.id)}
+                            variant="plain"
+                            tone="critical"
+                          >
+                            Remove
+                          </Button>
+                        </InlineStack>
+                      ))}
+                      {collection ? (
+                        <InlineStack align="space-between" blockAlign="center">
+                          <Text as="span">Fallback collection: {collection.title}</Text>
+                          <Button onClick={pickCollection} variant="plain">
+                            Change
+                          </Button>
+                        </InlineStack>
+                      ) : (
+                        <Button onClick={pickCollection}>
+                          Choose fallback collection
+                        </Button>
+                      )}
+                    </BlockStack>
+                  ) : sourceType === "collection" ? (
                     <BlockStack gap="200">
                       {collection ? (
                         <InlineStack align="space-between" blockAlign="center">

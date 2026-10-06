@@ -39,7 +39,7 @@ model CartUpsellSettings {
   id           String  @id @default(cuid())
   shop         String  @unique
   direction    String  @default("ltr") // "ltr" | "rtl"
-  sourceType   String  @default("collection") // "collection" | "manual"
+  sourceType   String  @default("collection") // "collection" | "manual" | "automatic"
   collectionId String? // Shopify collection GID, used when sourceType is "collection"
   productIds   String  @default("[]") // JSON array of Shopify product GIDs, used when sourceType is "manual"
   displayMode  String  @default("list") // "list" | "slider"

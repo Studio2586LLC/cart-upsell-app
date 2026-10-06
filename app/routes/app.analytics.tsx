@@ -45,7 +45,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const dateFilter = isAllTime ? {} : { createdAt: { gte: from, lte: to } };
 
-  const [addToCartTotal, purchaseTotal, perProduct] = await Promise.all([
+  const [impressionTotal, clickTotal, addToCartTotal, purchaseTotal, perProduct] = await Promise.all([
+    prisma.upsellEvent.aggregate({
+      where: { shop, type: "impression", ...dateFilter },
+      _sum: { quantity: true },
+    }),
+    prisma.upsellEvent.aggregate({
+      where: { shop, type: "click", ...dateFilter },
+      _sum: { quantity: true },
+    }),
     prisma.upsellEvent.aggregate({
       where: { shop, type: "add_to_cart", ...dateFilter },
       _sum: { quantity: true },
@@ -70,16 +78,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const byProduct = new Map<
     string,
-    { addToCart: number; purchases: number; revenue: number }
+    { impressions: number; clicks: number; addToCart: number; purchases: number; revenue: number }
   >();
 
   for (const row of perProduct) {
     const entry = byProduct.get(row.productId) ?? {
+      impressions: 0,
+      clicks: 0,
       addToCart: 0,
       purchases: 0,
       revenue: 0,
     };
-    if (row.type === "add_to_cart") {
+    if (row.type === "impression") {
+      entry.impressions = row._sum.quantity ?? 0;
+    } else if (row.type === "click") {
+      entry.clicks = row._sum.quantity ?? 0;
+    } else if (row.type === "add_to_cart") {
       entry.addToCart = row._sum.quantity ?? 0;
     } else if (row.type === "purchase") {
       entry.purchases = row._sum.quantity ?? 0;
@@ -118,6 +132,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return {
     currency,
+    impressionCount: impressionTotal._sum.quantity ?? 0,
+    clickCount: clickTotal._sum.quantity ?? 0,
     addToCartCount: addToCartTotal._sum.quantity ?? 0,
     purchaseCount: purchaseTotal._sum.quantity ?? 0,
     revenue: purchaseTotal._sum.amount ?? 0,
@@ -325,6 +341,41 @@ export default function Analytics() {
                 <Card>
                   <BlockStack gap="100">
                     <Text as="span" tone="subdued">
+                      Offers shown
+                    </Text>
+                    <Text as="p" variant="heading2xl">
+                      {data.impressionCount}
+                    </Text>
+                  </BlockStack>
+                </Card>
+                <Card>
+                  <BlockStack gap="100">
+                    <Text as="span" tone="subdued">
+                      Offers clicked
+                    </Text>
+                    <Text as="p" variant="heading2xl">
+                      {data.clickCount}
+                    </Text>
+                  </BlockStack>
+                </Card>
+                <Card>
+                  <BlockStack gap="100">
+                    <Text as="span" tone="subdued">
+                      Click rate
+                    </Text>
+                    <Text as="p" variant="heading2xl">
+                      {data.impressionCount > 0
+                        ? `${((data.clickCount / data.impressionCount) * 100).toFixed(1)}%`
+                        : "—"}
+                    </Text>
+                  </BlockStack>
+                </Card>
+              </InlineGrid>
+
+              <InlineGrid columns={3} gap="400">
+                <Card>
+                  <BlockStack gap="100">
+                    <Text as="span" tone="subdued">
                       Added to cart
                     </Text>
                     <Text as="p" variant="heading2xl">
@@ -368,10 +419,12 @@ export default function Analytics() {
                     </EmptyState>
                   ) : (
                     <DataTable
-                      columnContentTypes={["text", "numeric", "numeric", "numeric"]}
-                      headings={["Product", "Added to cart", "Purchased", "Revenue"]}
+                      columnContentTypes={["text", "numeric", "numeric", "numeric", "numeric", "numeric"]}
+                      headings={["Product", "Shown", "Clicked", "Added to cart", "Purchased", "Revenue"]}
                       rows={data.rows.map((row) => [
                         row.title,
+                        row.impressions,
+                        row.clicks,
                         row.addToCart,
                         row.purchases,
                         formatter.format(row.revenue),

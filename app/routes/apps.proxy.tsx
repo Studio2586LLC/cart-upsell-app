@@ -26,12 +26,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   if (!session || !admin) {
     return json({
       direction: "ltr",
+      sourceType: "collection",
       displayMode: "list",
       currency: "USD",
       headingText: null,
       buttonColor: null,
       buttonTextColor: null,
       buttonBorderRadius: null,
+      pinnedProducts: [],
       products: [],
     });
   }
@@ -57,9 +59,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shopJson = await shopResponse.json();
   const currency = shopJson.data?.shop?.currencyCode ?? "USD";
 
-  let rawProducts: RawProduct[] = [];
+  let manualProducts: RawProduct[] = [];
+  let collectionProducts: RawProduct[] = [];
 
-  if (sourceType === "manual") {
+  if (sourceType === "manual" || sourceType === "automatic") {
     const productIds: string[] = settings ? JSON.parse(settings.productIds) : [];
     if (productIds.length > 0) {
       const response = await admin.graphql(
@@ -81,9 +84,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         { variables: { ids: productIds } },
       );
       const json = await response.json();
-      rawProducts = (json.data?.nodes ?? []).filter(Boolean);
+      manualProducts = (json.data?.nodes ?? []).filter(Boolean);
     }
-  } else if (settings?.collectionId) {
+  }
+
+  if ((sourceType === "collection" || sourceType === "automatic") && settings?.collectionId) {
     const response = await admin.graphql(
       `#graphql
         query GetCollectionProducts($id: ID!, $first: Int!) {
@@ -105,13 +110,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       { variables: { id: settings.collectionId, first: MAX_PRODUCTS } },
     );
     const json = await response.json();
-    rawProducts = json.data?.collection?.products?.nodes ?? [];
+    collectionProducts = json.data?.collection?.products?.nodes ?? [];
   }
 
-  const products = rawProducts
+  const toOffers = (rawProducts: RawProduct[]) => rawProducts
     .map((product) => {
       const variant = product.variants.nodes[0];
-      if (!variant || !variant.availableForSale) return null;
+      if (!variant) return null;
 
       const image = product.featuredImage?.url
         ? `${product.featuredImage.url}${
@@ -123,6 +128,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         productId: Number(product.legacyResourceId),
         variantId: Number(variant.legacyResourceId),
         title: product.title,
+        handle: product.handle,
         url: `/products/${product.handle}`,
         image,
         price: variant.price,
@@ -130,14 +136,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     })
     .filter((product): product is NonNullable<typeof product> => product !== null);
 
+  const pinnedProducts = sourceType === "automatic" ? toOffers(manualProducts) : [];
+  const products = sourceType === "manual"
+    ? toOffers(manualProducts)
+    : toOffers(collectionProducts);
+
   return json({
     direction,
+    sourceType,
     displayMode,
     currency,
     headingText,
     buttonColor,
     buttonTextColor,
     buttonBorderRadius,
+    pinnedProducts,
     products,
   });
 };
@@ -150,20 +163,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const body = await request.json().catch(() => null);
-  const productId = Number(body?.productId);
-  const quantity = Number(body?.quantity) || 1;
+  const type = body?.type ?? "add_to_cart";
 
-  if (!productId) {
+  if (!["impression", "click", "add_to_cart"].includes(type)) {
     return json({ ok: false }, { status: 400 });
   }
 
-  await prisma.upsellEvent.create({
-    data: {
+  const ids = type === "impression" ? body?.productIds : [body?.productId];
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > MAX_PRODUCTS ||
+      ids.some((id) => !Number.isSafeInteger(Number(id)) || Number(id) <= 0)) {
+    return json({ ok: false }, { status: 400 });
+  }
+
+  const quantity = type === "add_to_cart" ? Number(body?.quantity) : 1;
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 100) {
+    return json({ ok: false }, { status: 400 });
+  }
+
+  await prisma.upsellEvent.createMany({
+    data: ids.map((id: number | string) => ({
       shop: session.shop,
-      type: "add_to_cart",
-      productId: String(productId),
+      type,
+      productId: String(id),
       quantity,
-    },
+    })),
   });
 
   return json({ ok: true });
