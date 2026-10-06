@@ -21,6 +21,24 @@ type SourceType = "collection" | "manual" | "automatic";
 type DisplayMode = "list" | "slider";
 
 type PickedResource = { id: string; title: string };
+type ThemeActivation = {
+  handle: string;
+  status: "active" | "available" | "unavailable";
+  activations: { target: string }[];
+};
+
+function parseProductIds(value: string | null | undefined): string[] {
+  try {
+    const ids = JSON.parse(value || "[]");
+    return Array.isArray(ids)
+      ? ids.filter((id): id is string =>
+          typeof id === "string" && /^gid:\/\/shopify\/Product\/\d+$/.test(id),
+        ).slice(0, 100)
+      : [];
+  } catch {
+    return [];
+  }
+}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
@@ -33,10 +51,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const sourceType = (settings?.sourceType ?? "collection") as SourceType;
   const displayMode = (settings?.displayMode ?? "list") as DisplayMode;
   const collectionId = settings?.collectionId ?? null;
-  const productIds: string[] = settings ? JSON.parse(settings.productIds) : [];
+  const productIds = parseProductIds(settings?.productIds);
+  const excludedProductIds = parseProductIds(settings?.excludedProductIds);
 
   let selectedCollection: PickedResource | null = null;
   let selectedProducts: PickedResource[] = [];
+  let excludedProducts: PickedResource[] = [];
 
   if (collectionId) {
     const response = await admin.graphql(
@@ -64,12 +84,31 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     selectedProducts = (json.data?.nodes ?? []).filter(Boolean);
   }
 
+  if (excludedProductIds.length > 0) {
+    const response = await admin.graphql(
+      `#graphql
+        query GetExcludedProducts($ids: [ID!]!) {
+          nodes(ids: $ids) {
+            ... on Product { id title }
+          }
+        }`,
+      { variables: { ids: excludedProductIds } },
+    );
+    const json = await response.json();
+    excludedProducts = (json.data?.nodes ?? []).filter(Boolean);
+  }
+
   return {
     direction,
     sourceType,
     displayMode,
     selectedCollection,
     selectedProducts,
+    excludedProducts,
+    minPrice: settings?.minPrice?.toString() ?? "",
+    maxPrice: settings?.maxPrice?.toString() ?? "",
+    holdoutPercent: String(settings?.holdoutPercent ?? 0),
+    themeEditorUrl: `https://${session.shop}/admin/themes/current/editor?context=apps&activateAppId=${process.env.SHOPIFY_API_KEY}/cart-upsell-embed`,
   };
 };
 
@@ -88,9 +127,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const displayMode: DisplayMode =
     formData.get("displayMode")?.toString() === "slider" ? "slider" : "list";
   const collectionId = formData.get("collectionId")?.toString() || null;
-  const productIds: string[] = JSON.parse(
-    formData.get("productIds")?.toString() || "[]",
-  );
+  const productIds = parseProductIds(formData.get("productIds")?.toString());
+  const excludedProductIds = parseProductIds(formData.get("excludedProductIds")?.toString());
+  const parsePrice = (value: FormDataEntryValue | null) => {
+    const raw = value?.toString().trim();
+    if (!raw) return null;
+    const amount = Number(raw);
+    return Number.isFinite(amount) && amount >= 0 && amount <= 1000000
+      ? amount
+      : NaN;
+  };
+  const minPrice = parsePrice(formData.get("minPrice"));
+  const maxPrice = parsePrice(formData.get("maxPrice"));
+  const holdoutPercent = Number(formData.get("holdoutPercent"));
+  if (Number.isNaN(minPrice) || Number.isNaN(maxPrice) ||
+      (minPrice !== null && maxPrice !== null && minPrice > maxPrice) ||
+      ![0, 10, 20].includes(holdoutPercent)) {
+    return { ok: false, error: "Enter valid price limits (minimum must not exceed maximum)." };
+  }
+
+  const existingSettings = await prisma.cartUpsellSettings.findUnique({
+    where: { shop: session.shop },
+    select: { holdoutPercent: true, experimentId: true },
+  });
+  const experimentId = holdoutPercent === 0 ? null
+    : existingSettings?.holdoutPercent === holdoutPercent && existingSettings.experimentId
+      ? existingSettings.experimentId : crypto.randomUUID();
 
   await prisma.cartUpsellSettings.upsert({
     where: { shop: session.shop },
@@ -101,6 +163,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       displayMode,
       collectionId,
       productIds: JSON.stringify(productIds),
+      excludedProductIds: JSON.stringify(excludedProductIds),
+      minPrice,
+      maxPrice,
+      holdoutPercent,
+      experimentId,
     },
     update: {
       direction,
@@ -108,6 +175,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       displayMode,
       collectionId,
       productIds: JSON.stringify(productIds),
+      excludedProductIds: JSON.stringify(excludedProductIds),
+      minPrice,
+      maxPrice,
+      holdoutPercent,
+      experimentId,
     },
   });
 
@@ -128,14 +200,48 @@ export default function Settings() {
   const [products, setProducts] = useState<PickedResource[]>(
     data.selectedProducts,
   );
+  const [excludedProducts, setExcludedProducts] = useState<PickedResource[]>(
+    data.excludedProducts,
+  );
+  const [minPrice, setMinPrice] = useState(data.minPrice);
+  const [maxPrice, setMaxPrice] = useState(data.maxPrice);
+  const [holdoutPercent, setHoldoutPercent] = useState(data.holdoutPercent);
+  const [themeStatus, setThemeStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [themeActivations, setThemeActivations] = useState<ThemeActivation[]>([]);
 
   const isSaving = fetcher.state !== "idle";
 
   useEffect(() => {
     if (fetcher.data?.ok) {
       shopify.toast.show("Settings saved");
+    } else if (fetcher.data && "error" in fetcher.data && fetcher.data.error) {
+      shopify.toast.show(fetcher.data.error, { isError: true });
     }
   }, [fetcher.data, shopify]);
+
+  useEffect(() => {
+    const appApi = shopify as unknown as {
+      app?: { extensions?: () => Promise<{
+        type: string;
+        activations: ThemeActivation[];
+      }[]> };
+    };
+    if (!appApi.app?.extensions) {
+      setThemeStatus("unavailable");
+      return;
+    }
+    let active = true;
+    appApi.app.extensions().then((extensions) => {
+      if (!active) return;
+      setThemeActivations(extensions
+        .filter((extension) => extension.type === "theme_app_extension")
+        .flatMap((extension) => extension.activations));
+      setThemeStatus("ready");
+    }).catch(() => {
+      if (active) setThemeStatus("unavailable");
+    });
+    return () => { active = false; };
+  }, [shopify]);
 
   const pickCollection = useCallback(async () => {
     const picked = await shopify.resourcePicker({
@@ -169,6 +275,21 @@ export default function Settings() {
   const removeProduct = (id: string) =>
     setProducts((prev) => prev.filter((product) => product.id !== id));
 
+  const pickExcludedProducts = useCallback(async () => {
+    const picked = await shopify.resourcePicker({
+      type: "product",
+      action: "select",
+      multiple: true,
+      selectionIds: excludedProducts.map((product) => ({ id: product.id })),
+    });
+    if (picked?.selection) {
+      setExcludedProducts(picked.selection.map((product) => ({
+        id: product.id,
+        title: product.title,
+      })));
+    }
+  }, [excludedProducts, shopify]);
+
   const handleSave = () => {
     fetcher.submit(
       {
@@ -177,6 +298,10 @@ export default function Settings() {
         displayMode,
         collectionId: collection?.id ?? "",
         productIds: JSON.stringify(products.map((product) => product.id)),
+        excludedProductIds: JSON.stringify(excludedProducts.map((product) => product.id)),
+        minPrice,
+        maxPrice,
+        holdoutPercent,
       },
       { method: "POST" },
     );
@@ -189,6 +314,38 @@ export default function Settings() {
         <Layout>
           <Layout.Section>
             <BlockStack gap="500">
+              <Card>
+                <BlockStack gap="300">
+                  <Text as="h2" variant="headingMd">Theme setup</Text>
+                  {themeStatus === "loading" ? (
+                    <Text as="p">Checking your published theme…</Text>
+                  ) : themeStatus === "unavailable" ? (
+                    <Text as="p" tone="subdued">
+                      Could not check activation automatically. Open the theme editor to verify it.
+                    </Text>
+                  ) : (
+                    <>
+                      <Text as="p">
+                        Drawer embed: {themeActivations.some((activation) =>
+                          activation.handle === "cart-upsell-embed" && activation.status === "active")
+                          ? "Active" : "Not active"}
+                      </Text>
+                      <Text as="p">
+                        Cart-page block: {themeActivations.some((activation) =>
+                          activation.handle === "cart-upsell" && activation.status === "active")
+                          ? "Placed in published theme" : "Not placed"}
+                      </Text>
+                    </>
+                  )}
+                  <Text as="p" tone="subdued">
+                    Enable the embed for a supported cart drawer, or add the app block to
+                    your cart page. Check the storefront after saving your theme.
+                  </Text>
+                  <a href={data.themeEditorUrl} target="_blank" rel="noreferrer">
+                    Open theme editor
+                  </a>
+                </BlockStack>
+              </Card>
               <Card>
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingMd">
@@ -219,6 +376,59 @@ export default function Settings() {
                     value={displayMode}
                     onChange={(value) => setDisplayMode(value as DisplayMode)}
                   />
+                </BlockStack>
+              </Card>
+
+              <Card>
+                <BlockStack gap="400">
+                  <Text as="h2" variant="headingMd">Offer rules</Text>
+                  <Text as="p" tone="subdued">
+                    Exclusions apply to manual, collection, and automatic suggestions.
+                    Price limits use your store currency; they are skipped when a
+                    shopper views a different currency.
+                  </Text>
+                  <Button onClick={pickExcludedProducts}>Exclude products</Button>
+                  {excludedProducts.map((product) => (
+                    <InlineStack key={product.id} align="space-between" blockAlign="center">
+                      <Text as="span">{product.title}</Text>
+                      <Button
+                        onClick={() => setExcludedProducts((current) =>
+                          current.filter((entry) => entry.id !== product.id))}
+                        variant="plain"
+                        tone="critical"
+                      >
+                        Remove
+                      </Button>
+                    </InlineStack>
+                  ))}
+                  <InlineStack gap="400">
+                    <label>
+                      Minimum price
+                      <input type="number" min="0" max="1000000" step="0.01"
+                        value={minPrice} onChange={(event) => setMinPrice(event.target.value)} />
+                    </label>
+                    <label>
+                      Maximum price
+                      <input type="number" min="0" max="1000000" step="0.01"
+                        value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} />
+                    </label>
+                  </InlineStack>
+                </BlockStack>
+              </Card>
+
+              <Card>
+                <BlockStack gap="300">
+                  <Text as="h2" variant="headingMd">Revenue holdout test</Text>
+                  <Text as="p" tone="subdued">
+                    Hide offers from a random share of cart visitors, then compare
+                    paid order revenue per assigned visitor. Changing the percentage
+                    starts a new test. Keep it running long enough to collect orders.
+                  </Text>
+                  <Select label="Holdout share"
+                    options={[{ label: "Off", value: "0" },
+                      { label: "10%", value: "10" },
+                      { label: "20%", value: "20" }]}
+                    value={holdoutPercent} onChange={setHoldoutPercent} />
                 </BlockStack>
               </Card>
 

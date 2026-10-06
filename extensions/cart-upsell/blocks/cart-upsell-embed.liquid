@@ -6,6 +6,12 @@
   Upsell app's admin.
 {%- enddoc -%}
 
+<template data-cart-upsell-i18n
+  data-cart-upsell-heading="{{ 'cart_upsell.heading' | t | escape }}"
+  data-cart-upsell-add="{{ 'cart_upsell.add' | t | escape }}"
+  data-cart-upsell-previous="{{ 'cart_upsell.previous' | t | escape }}"
+  data-cart-upsell-next="{{ 'cart_upsell.next' | t | escape }}"></template>
+
 {{ 'cart-upsell.css' | asset_url | stylesheet_tag }}
 <script src="{{ 'cart-upsell.js' | asset_url }}" defer></script>
 

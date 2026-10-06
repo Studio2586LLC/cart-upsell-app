@@ -2,6 +2,8 @@
   padding: 16px var(--padding-md, 16px);
   border-top: 1px solid var(--color-border, #F0E6DC);
   border-bottom: 1px solid var(--color-border, #F0E6DC);
+  font-family: inherit;
+  color: inherit;
 }
 
 .cart-upsell[hidden] {
@@ -17,7 +19,7 @@
 }
 
 .cart-upsell__title {
-  font-family: var(--font-paragraph--family);
+  font-family: inherit;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.08em;
@@ -62,7 +64,7 @@
 
 .cart-upsell__track {
   display: flex;
-  gap: 12px;
+  gap: var(--cart-upsell-item-gap, 12px);
 }
 
 .cart-upsell__track--list {
@@ -96,8 +98,8 @@
 }
 
 .cart-upsell__img {
-  width: 64px;
-  height: 64px;
+  width: var(--cart-upsell-image-size, 64px);
+  height: var(--cart-upsell-image-size, 64px);
   object-fit: cover;
   display: block;
   border-radius: 4px;
@@ -113,7 +115,7 @@
 }
 
 .cart-upsell__name {
-  font-family: var(--font-paragraph--family);
+  font-family: inherit;
   font-size: 13px;
   font-weight: 500;
   color: currentColor;
@@ -129,7 +131,7 @@
 }
 
 .cart-upsell__price {
-  font-family: var(--font-paragraph--family);
+  font-family: inherit;
   font-size: 13px;
   opacity: 0.7;
 }
@@ -139,7 +141,7 @@
   color: var(--cart-upsell-btn-color, var(--color-background, #fff));
   border: none;
   border-radius: var(--cart-upsell-btn-radius, 40px);
-  font-family: var(--font-paragraph--family);
+  font-family: inherit;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.05em;

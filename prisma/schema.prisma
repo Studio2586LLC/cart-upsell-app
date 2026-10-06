@@ -42,13 +42,21 @@ model CartUpsellSettings {
   sourceType   String  @default("collection") // "collection" | "manual" | "automatic"
   collectionId String? // Shopify collection GID, used when sourceType is "collection"
   productIds   String  @default("[]") // JSON array of Shopify product GIDs, used when sourceType is "manual"
+  excludedProductIds String @default("[]") // JSON array of Shopify product GIDs excluded from every source
+  minPrice     Float? // Store-currency major units
+  maxPrice     Float? // Store-currency major units
+  holdoutPercent Int @default(0) // 0 disables the experiment
+  experimentId String?
   displayMode  String  @default("list") // "list" | "slider"
 
   // Design overrides — null means "inherit from the store's theme"
   headingText        String?
+  buttonLabel        String?
   buttonColor        String?
   buttonTextColor    String?
   buttonBorderRadius Int?
+  imageSize          Int?
+  itemGap            Int?
 
   updatedAt DateTime @updatedAt
 }
@@ -56,7 +64,7 @@ model CartUpsellSettings {
 model UpsellEvent {
   id        String   @id @default(cuid())
   shop      String
-  type      String // "add_to_cart" | "purchase"
+  type      String // "impression" | "click" | "add_to_cart" | "purchase"
   productId String // numeric Shopify product id, as a string
   quantity  Int      @default(1)
   amount    Float? // line revenue, only set for "purchase" events
@@ -64,4 +72,30 @@ model UpsellEvent {
 
   @@index([shop, type, createdAt])
   @@index([shop, productId])
+}
+
+model ExperimentAssignment {
+  id           String   @id @default(cuid())
+  shop         String
+  experimentId String
+  visitorId    String
+  cohort       String // "control" | "variant"
+  createdAt    DateTime @default(now())
+
+  @@unique([shop, experimentId, visitorId])
+  @@index([shop, experimentId, cohort, createdAt])
+}
+
+model OrderAttribution {
+  id           String   @id @default(cuid())
+  shop         String
+  orderId      String
+  experimentId String?
+  cohort       String?
+  amount       Float
+  currency     String
+  createdAt    DateTime @default(now())
+
+  @@unique([shop, orderId])
+  @@index([shop, experimentId, cohort, createdAt])
 }

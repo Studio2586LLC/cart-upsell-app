@@ -1,5 +1,14 @@
 # Shopify App Template - Remix
 
+## Cart Upsell release notes
+
+- Offer rules: merchants can exclude products and set minimum/maximum prices in their store currency. Price limits are skipped in other shopper currencies rather than comparing unlike amounts.
+- Theme integration: the app block works wherever a compatible theme section accepts app blocks (including cart-page placements). The app embed automatically mounts in supported Horizon and Dawn cart drawers. Other drawer themes should use the app block or be tested before claiming support.
+- Design: heading and button copy, button colors/radius, product image size, and spacing can be adjusted. The admin preview is illustrative; actual theme fonts and button styles are inherited on the storefront. Default storefront copy is localized for English, French, German, Spanish, and Ukrainian.
+- Measurement: paid-order webhooks are idempotent. Attributed upsell line revenue is shown separately from the optional 10%/20% holdout test, which compares paid order revenue per assigned cart visitor. The holdout is directional and needs sufficient sample size before making a product decision.
+
+Before releasing this version, apply the new PostgreSQL migration (`npm run setup` on the application service) and deploy the app backend. Then coordinate the service's `SCOPES=read_products,read_orders,write_app_proxy` change with a Shopify app-version deploy for the new scope and theme extension. Test both supported drawers, the cart-page block, and a paid test order on a development store before releasing to merchants. Shopify app configuration changes take effect only after an app version is deployed. Do not publish the new extension before the backend migration is live.
+
 > [!NOTE]
 > **Remix is now React Router.** As of [React Router v7](https://remix.run/blog/merging-remix-and-react-router), Remix and React Router have merged.
 > 

@@ -33,8 +33,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       buttonColor: null,
       buttonTextColor: null,
       buttonBorderRadius: null,
+      buttonLabel: null,
+      imageSize: null,
+      itemGap: null,
       pinnedProducts: [],
       products: [],
+      excludedProductIds: [],
+      minPrice: null,
+      maxPrice: null,
+      holdoutPercent: 0,
+      experimentId: null,
     });
   }
 
@@ -49,6 +57,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const buttonColor = settings?.buttonColor ?? null;
   const buttonTextColor = settings?.buttonTextColor ?? null;
   const buttonBorderRadius = settings?.buttonBorderRadius ?? null;
+  const buttonLabel = settings?.buttonLabel ?? null;
+  const imageSize = settings?.imageSize ?? null;
+  const itemGap = settings?.itemGap ?? null;
+  let excludedProductIds: number[] = [];
+  try {
+    const ids = JSON.parse(settings?.excludedProductIds ?? "[]");
+    if (Array.isArray(ids)) {
+      excludedProductIds = ids.map((id) => Number(String(id).split("/").pop()))
+        .filter((id) => Number.isSafeInteger(id) && id > 0);
+    }
+  } catch {
+    excludedProductIds = [];
+  }
 
   const shopResponse = await admin.graphql(
     `#graphql
@@ -150,8 +171,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     buttonColor,
     buttonTextColor,
     buttonBorderRadius,
+    buttonLabel,
+    imageSize,
+    itemGap,
     pinnedProducts,
     products,
+    excludedProductIds,
+    minPrice: settings?.minPrice ?? null,
+    maxPrice: settings?.maxPrice ?? null,
+    holdoutPercent: settings?.holdoutPercent ?? 0,
+    experimentId: settings?.experimentId ?? null,
   });
 };
 
@@ -164,6 +193,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const body = await request.json().catch(() => null);
   const type = body?.type ?? "add_to_cart";
+
+  if (type === "assignment") {
+    const settings = await prisma.cartUpsellSettings.findUnique({
+      where: { shop: session.shop },
+      select: { experimentId: true, holdoutPercent: true },
+    });
+    if (!settings?.holdoutPercent || !settings.experimentId ||
+        body?.experimentId !== settings.experimentId ||
+        !["control", "variant"].includes(body?.cohort) ||
+        typeof body?.visitorId !== "string" ||
+        !/^[0-9a-f-]{36}$/i.test(body.visitorId)) {
+      return json({ ok: false }, { status: 400 });
+    }
+    await prisma.experimentAssignment.createMany({
+      data: [{ shop: session.shop, experimentId: settings.experimentId,
+        visitorId: body.visitorId, cohort: body.cohort }],
+      skipDuplicates: true,
+    });
+    return json({ ok: true });
+  }
 
   if (!["impression", "click", "add_to_cart"].includes(type)) {
     return json({ ok: false }, { status: 400 });

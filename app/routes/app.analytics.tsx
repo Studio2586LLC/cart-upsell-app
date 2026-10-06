@@ -76,6 +76,43 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shopJson = await shopResponse.json();
   const currency = shopJson.data?.shop?.currencyCode ?? "USD";
 
+  const settings = await prisma.cartUpsellSettings.findUnique({
+    where: { shop },
+    select: { experimentId: true, holdoutPercent: true },
+  });
+  let holdout: {
+    controlVisitors: number; variantVisitors: number;
+    controlOrders: number; variantOrders: number;
+    controlRevenue: number; variantRevenue: number;
+  } | null = null;
+  if (settings?.experimentId && settings.holdoutPercent > 0) {
+    const [assignments, orders] = await Promise.all([
+      prisma.experimentAssignment.groupBy({
+        by: ["cohort"], where: { shop, experimentId: settings.experimentId },
+        _count: { _all: true },
+      }),
+      prisma.orderAttribution.groupBy({
+        by: ["cohort"],
+        where: { shop, experimentId: settings.experimentId, currency },
+        _count: { _all: true }, _sum: { amount: true },
+      }),
+    ]);
+    const assignment = (cohort: string) =>
+      assignments.find((row) => row.cohort === cohort)?._count._all ?? 0;
+    const orderCount = (cohort: string) =>
+      orders.find((row) => row.cohort === cohort)?._count._all ?? 0;
+    const revenue = (cohort: string) =>
+      orders.find((row) => row.cohort === cohort)?._sum.amount ?? 0;
+    holdout = {
+      controlVisitors: assignment("control"),
+      variantVisitors: assignment("variant"),
+      controlOrders: orderCount("control"),
+      variantOrders: orderCount("variant"),
+      controlRevenue: revenue("control"),
+      variantRevenue: revenue("variant"),
+    };
+  }
+
   const byProduct = new Map<
     string,
     { impressions: number; clicks: number; addToCart: number; purchases: number; revenue: number }
@@ -137,6 +174,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     addToCartCount: addToCartTotal._sum.quantity ?? 0,
     purchaseCount: purchaseTotal._sum.quantity ?? 0,
     revenue: purchaseTotal._sum.amount ?? 0,
+    holdout,
     rows,
     range: {
       isAllTime,
@@ -396,7 +434,7 @@ export default function Analytics() {
                 <Card>
                   <BlockStack gap="100">
                     <Text as="span" tone="subdued">
-                      Revenue generated
+                      Attributed upsell revenue
                     </Text>
                     <Text as="p" variant="heading2xl">
                       {formatter.format(data.revenue)}
@@ -404,6 +442,46 @@ export default function Analytics() {
                   </BlockStack>
                 </Card>
               </InlineGrid>
+
+              <Card>
+                <BlockStack gap="400">
+                  <Text as="h2" variant="headingMd">Revenue holdout test</Text>
+                  {!data.holdout ? (
+                    <Text as="p" tone="subdued">
+                      Enable a holdout in Settings to compare cart visitors with and without offers.
+                    </Text>
+                  ) : (
+                    <>
+                      <Text as="p" tone="subdued">
+                        Current test, all time. Revenue per assigned visitor includes the
+                        whole paid order. The difference is directional, not proof of
+                        statistical significance.
+                      </Text>
+                      <DataTable
+                        columnContentTypes={["text", "numeric", "numeric", "numeric", "numeric"]}
+                        headings={["Group", "Visitors", "Orders", "Order revenue", "Revenue / visitor"]}
+                        rows={([
+                          ["No offers", data.holdout.controlVisitors,
+                            data.holdout.controlOrders, data.holdout.controlRevenue],
+                          ["Offers shown", data.holdout.variantVisitors,
+                            data.holdout.variantOrders, data.holdout.variantRevenue],
+                        ] as [string, number, number, number][]).map(([label, visitors, orders, revenue]) => [
+                          label, visitors, orders, formatter.format(revenue),
+                          visitors ? formatter.format(revenue / visitors) : "—",
+                        ])}
+                      />
+                      {data.holdout.controlVisitors > 0 && data.holdout.variantVisitors > 0 && (
+                        <Text as="p">
+                          Difference per visitor: {formatter.format(
+                            data.holdout.variantRevenue / data.holdout.variantVisitors -
+                            data.holdout.controlRevenue / data.holdout.controlVisitors,
+                          )}
+                        </Text>
+                      )}
+                    </>
+                  )}
+                </BlockStack>
+              </Card>
 
               <Card>
                 <BlockStack gap="400">

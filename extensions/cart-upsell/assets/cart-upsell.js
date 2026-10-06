@@ -11,6 +11,7 @@
   var clickedForExposure = {};
   var activeImpressionObserver = null;
   var productCache = {};
+  var experimentSync = {};
 
   var MARKUP =
     '<div class="cart-upsell__header">' +
@@ -22,36 +23,112 @@
     '</div>' +
     '<div class="cart-upsell__track-wrapper"><div class="cart-upsell__track"></div></div>';
 
-  function ensureMounted(refresh) {
-    var existing = document.querySelector('[data-cart-upsell]');
-    if (existing) {
-      if (!existing.dataset.cartUpsellInit) {
-        existing.dataset.cartUpsellInit = 'true';
-        if (!existing.querySelector('.cart-upsell__header')) {
-          existing.innerHTML = MARKUP;
-        }
-        populate(existing);
-      } else if (refresh) {
-        populate(existing);
+  function labelsFor(root) {
+    var source = root.dataset.cartUpsellHeading
+      ? root : document.querySelector('[data-cart-upsell-i18n]');
+    var values = source ? source.dataset : {};
+    return {
+      heading: values.cartUpsellHeading || 'Complete your order',
+      add: values.cartUpsellAdd || 'Add',
+      previous: values.cartUpsellPrevious || 'Previous',
+      next: values.cartUpsellNext || 'Next',
+    };
+  }
+
+  function inheritThemeButton(root) {
+    var reference = document.querySelector(
+      '.cart__checkout-button, [name="checkout"], .button--primary, .product-form__submit'
+    );
+    if (!reference) return;
+    var styles = getComputedStyle(reference);
+    if (styles.backgroundColor !== 'rgba(0, 0, 0, 0)' &&
+        styles.backgroundColor !== 'transparent') {
+      root.style.setProperty('--cart-upsell-btn-bg', styles.backgroundColor);
+      root.style.setProperty('--cart-upsell-btn-color', styles.color);
+    }
+    if (styles.borderRadius) {
+      root.style.setProperty('--cart-upsell-btn-radius', styles.borderRadius);
+    }
+  }
+
+  function assignExperiment(config, cart) {
+    if (!config.experimentId || !config.holdoutPercent || !cart.items.length) {
+      return Promise.resolve('variant');
+    }
+    var experimentId = config.experimentId;
+    if (experimentSync[experimentId]) return experimentSync[experimentId];
+
+    var visitorId;
+    var cohort;
+    try {
+      visitorId = localStorage.getItem('cartUpsellVisitorId');
+      if (!visitorId) {
+        visitorId = window.crypto.randomUUID();
+        localStorage.setItem('cartUpsellVisitorId', visitorId);
       }
-      return;
+      cohort = localStorage.getItem('cartUpsellGroup:' + experimentId);
+      if (!cohort) {
+        var bucket = window.crypto.getRandomValues(new Uint32Array(1))[0] % 100;
+        cohort = bucket < config.holdoutPercent ? 'control' : 'variant';
+        localStorage.setItem('cartUpsellGroup:' + experimentId, cohort);
+      }
+    } catch (e) {
+      return Promise.resolve('untracked');
     }
 
-    var itemsWrap = document.querySelector('cart-drawer-component .cart-drawer__items');
-    if (!itemsWrap) return;
+    experimentSync[experimentId] = fetch(window.Shopify.routes.root + 'cart/update.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ attributes: {
+        __cart_upsell_test: experimentId + ':' + cohort,
+      } }),
+    }).then(function (response) {
+      if (!response.ok) throw new Error('Could not mark cart for holdout test');
+      return fetch(window.Shopify.routes.root + 'apps/cart-upsell', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'assignment', experimentId: experimentId,
+          visitorId: visitorId, cohort: cohort }),
+      });
+    }).then(function (response) {
+      if (!response.ok) throw new Error('Could not record assignment');
+      return cohort;
+    }).catch(function () {
+      delete experimentSync[experimentId];
+      return 'untracked';
+    });
+    return experimentSync[experimentId];
+  }
 
-    var next = itemsWrap.nextElementSibling;
-    if (next && next.classList.contains('cart-upsell')) return;
+  function ensureMounted(refresh) {
+    document.querySelectorAll('[data-cart-upsell]').forEach(function (root) {
+      if (!root.dataset.cartUpsellInit) {
+        root.dataset.cartUpsellInit = 'true';
+        if (!root.querySelector('.cart-upsell__header')) root.innerHTML = MARKUP;
+        populate(root);
+      } else if (refresh) {
+        populate(root);
+      }
+    });
 
-    var root = document.createElement('div');
-    root.className = 'cart-upsell';
-    root.hidden = true;
-    root.dataset.cartUpsell = '';
-    root.dataset.cartUpsellInit = 'true';
-    root.innerHTML = MARKUP;
+    var targets = document.querySelectorAll(
+      'cart-drawer-component .cart-drawer__items, cart-drawer #CartDrawer-CartItems'
+    );
+    targets.forEach(function (target) {
+      var drawer = target.closest('cart-drawer-component, cart-drawer');
+      if (!drawer || drawer.querySelector('[data-cart-upsell]:not([data-cart-upsell-auto])')) return;
+      if (target.nextElementSibling && target.nextElementSibling.matches('[data-cart-upsell-auto]')) return;
 
-    itemsWrap.insertAdjacentElement('afterend', root);
-    populate(root);
+      var root = document.createElement('div');
+      root.className = 'cart-upsell';
+      root.hidden = true;
+      root.dataset.cartUpsell = '';
+      root.dataset.cartUpsellAuto = '';
+      root.dataset.cartUpsellInit = 'true';
+      root.innerHTML = MARKUP;
+      target.insertAdjacentElement('afterend', root);
+      populate(root);
+    });
   }
 
   function populate(root) {
@@ -69,33 +146,50 @@
       .then(function (results) {
         var config = results[0];
         var cart = results[1];
-        if (config.sourceType !== 'automatic') {
-          return { config: config, cart: cart, recommendations: [] };
-        }
-        return fetchRecommendations(cart).then(function (recommendations) {
-          return { config: config, cart: cart, recommendations: recommendations };
+        return assignExperiment(config, cart).then(function (cohort) {
+          if (cohort !== 'variant' || config.sourceType !== 'automatic') {
+            return { config: config, cart: cart, recommendations: [], cohort: cohort };
+          }
+          return fetchRecommendations(cart).then(function (recommendations) {
+            return { config: config, cart: cart, recommendations: recommendations,
+              cohort: cohort };
+          });
         });
       })
       .then(function (data) {
         var config = data.config;
         var cart = data.cart;
+        if (data.cohort !== 'variant') {
+          return { config: config, cart: cart, products: [] };
+        }
         var cartProductIds = cart.items.map(function (item) {
           return item.product_id;
         });
+        var excludedProductIds = config.excludedProductIds || [];
 
         var seen = {};
         var products = (config.pinnedProducts || [])
           .concat(data.recommendations, config.products || [])
           .filter(function (product) {
-            if (cartProductIds.indexOf(product.productId) !== -1 || seen[product.productId]) {
+            if (cartProductIds.indexOf(product.productId) !== -1 ||
+                excludedProductIds.indexOf(product.productId) !== -1 ||
+                seen[product.productId]) {
               return false;
             }
             seen[product.productId] = true;
             return true;
-          }).slice(0, MAX_ITEMS);
+          });
 
         return hydrateFallbackProducts(products, cart).then(function (hydrated) {
-          return { config: config, cart: cart, products: hydrated };
+          var sameCurrency = !config.currency || config.currency === cart.currency;
+          var eligible = hydrated.filter(function (product) {
+            if (!sameCurrency) return true;
+            return (config.minPrice === null || config.minPrice === undefined ||
+                product.price >= config.minPrice) &&
+              (config.maxPrice === null || config.maxPrice === undefined ||
+                product.price <= config.maxPrice);
+          });
+          return { config: config, cart: cart, products: eligible.slice(0, MAX_ITEMS) };
         });
       })
       .then(function (data) {
@@ -112,19 +206,27 @@
         root.innerHTML = MARKUP;
         var track = root.querySelector('.cart-upsell__track');
         var title = root.querySelector('.cart-upsell__title');
+        var labels = labelsFor(root);
         root.dir = config.direction === 'rtl' ? 'rtl' : 'ltr';
 
-        if (config.headingText) {
-          title.textContent = config.headingText;
-        }
+        title.textContent = config.headingText || labels.heading;
+        root.querySelector('[data-prev]').setAttribute('aria-label', labels.previous);
+        root.querySelector('[data-next]').setAttribute('aria-label', labels.next);
+        inheritThemeButton(root);
         if (config.buttonColor) {
           root.style.setProperty('--cart-upsell-btn-bg', config.buttonColor);
         }
         if (config.buttonTextColor) {
           root.style.setProperty('--cart-upsell-btn-color', config.buttonTextColor);
         }
-        if (config.buttonBorderRadius) {
+        if (config.buttonBorderRadius !== null && config.buttonBorderRadius !== undefined) {
           root.style.setProperty('--cart-upsell-btn-radius', config.buttonBorderRadius + 'px');
+        }
+        if (config.imageSize) {
+          root.style.setProperty('--cart-upsell-image-size', config.imageSize + 'px');
+        }
+        if (config.itemGap !== null && config.itemGap !== undefined) {
+          root.style.setProperty('--cart-upsell-item-gap', config.itemGap + 'px');
         }
 
         var isSlider = config.displayMode === 'slider';
@@ -140,7 +242,7 @@
           } catch (e) {
             formatter = null;
           }
-          track.appendChild(renderItem(product, formatter));
+          track.appendChild(renderItem(product, formatter, config.buttonLabel || labels.add));
         });
 
         if (isSlider) {
@@ -325,7 +427,7 @@
     update();
   }
 
-  function renderItem(product, formatter) {
+  function renderItem(product, formatter, buttonLabel) {
     var item = document.createElement('div');
     item.className = 'cart-upsell__item';
     item.dataset.cartUpsellProductId = String(product.productId);
@@ -333,18 +435,19 @@
     var price = formatter ? formatter.format(Number(product.price)) : product.price;
 
     item.innerHTML =
-      '<a href="' + product.url + '" class="cart-upsell__img-link" tabindex="-1">' +
+      '<a href="' + escapeAttribute(product.url) + '" class="cart-upsell__img-link" tabindex="-1">' +
       (product.image
         ? '<img class="cart-upsell__img" src="' +
-          product.image +
+          escapeAttribute(product.image) +
           '" alt="" width="64" height="64" loading="lazy">'
         : '') +
       '</a>' +
       '<div class="cart-upsell__info">' +
-      '<a href="' + product.url + '" class="cart-upsell__name">' + escapeHtml(product.title) + '</a>' +
+      '<a href="' + escapeAttribute(product.url) + '" class="cart-upsell__name">' + escapeHtml(product.title) + '</a>' +
       '<span class="cart-upsell__price">' + escapeHtml(price) + '</span>' +
       '</div>' +
-      '<button type="button" class="cart-upsell__btn" data-variant-id="' + product.variantId + '">Add</button>';
+      '<button type="button" class="cart-upsell__btn" data-variant-id="' + product.variantId + '">' +
+      escapeHtml(buttonLabel) + '</button>';
 
     var button = item.querySelector('.cart-upsell__btn');
     button.addEventListener('click', function () {
@@ -366,19 +469,34 @@
     var originalText = button.textContent;
     button.textContent = '...';
 
-    fetch(window.Shopify.routes.root + 'cart/add.js', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
-        id: product.variantId,
-        quantity: 1,
-        properties: { _cart_upsell_app: 'cart-upsell' },
-      }),
-    })
+    var standardAction = window.Shopify && window.Shopify.actions &&
+      window.Shopify.actions.updateCart;
+    var update = standardAction
+      ? standardAction({ lines: [{
+          merchandiseId: String(product.variantId),
+          quantity: 1,
+          attributes: [{ key: '_cart_upsell_app', value: 'cart-upsell' }],
+        }] }).then(function (result) {
+          if (result.userErrors && result.userErrors.length) throw new Error('Cart add failed');
+          return result;
+        })
+      : fetch(window.Shopify.routes.root + 'cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            id: product.variantId,
+            quantity: 1,
+            properties: { _cart_upsell_app: 'cart-upsell' },
+          }),
+        }).then(function (response) {
+          if (!response.ok) throw new Error('Cart add failed');
+          return refreshCartDrawer();
+        });
+
+    update
       .then(function (response) {
-        if (!response.ok) throw new Error('Cart add failed');
         trackEvent('add_to_cart', product.productId);
-        return refreshCartDrawer();
+        return response;
       })
       .then(function () {
         var root = button.closest('[data-cart-upsell]');
@@ -392,27 +510,24 @@
       });
   }
 
-  // Horizon's own drawer refresh is driven by an internal, undocumented
-  // event class (@shopify/events' CartLinesUpdateEvent) that isn't safe to
-  // hand-construct. Instead, re-fetch the drawer's section HTML via the
-  // public Section Rendering API and swap in just the inner content — this
-  // is what actually refreshes the line items/summary after our add-to-cart
-  // call. We deliberately swap only `.cart-drawer__inner`, not the whole
-  // section, so the surrounding <dialog>/<theme-drawer> keeps its open
-  // state and animations instead of being destroyed mid-interaction.
   function refreshCartDrawer() {
-    return fetch(window.Shopify.routes.root + '?sections=cart-drawer-section')
+    var isHorizon = Boolean(document.querySelector('cart-drawer-component .cart-drawer__inner'));
+    var section = isHorizon ? 'cart-drawer-section' : 'cart-drawer';
+    var selector = isHorizon
+      ? 'cart-drawer-component .cart-drawer__inner'
+      : 'cart-drawer .drawer__inner';
+    return fetch(window.Shopify.routes.root + '?sections=' + section)
       .then(function (r) {
         return r.json();
       })
       .then(function (sections) {
-        var html = sections['cart-drawer-section'];
+        var html = sections[section];
         if (!html) return;
 
         var freshInner = new DOMParser()
           .parseFromString(html, 'text/html')
-          .querySelector('.cart-drawer__inner');
-        var currentInner = document.querySelector('cart-drawer-component .cart-drawer__inner');
+          .querySelector(selector);
+        var currentInner = document.querySelector(selector);
 
         if (freshInner && currentInner) {
           currentInner.replaceWith(freshInner);
@@ -480,8 +595,12 @@
 
   function escapeHtml(value) {
     var div = document.createElement('div');
-    div.textContent = value;
+    div.textContent = String(value);
     return div.innerHTML;
+  }
+
+  function escapeAttribute(value) {
+    return escapeHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   function scheduleCheck(refresh) {
@@ -498,13 +617,14 @@
   scheduleCheck(false);
   document.addEventListener('DOMContentLoaded', function () { scheduleCheck(false); });
 
-  var observeTarget = document.getElementById('cart-drawer') || document.body;
   var observer = new MutationObserver(function (mutations) {
     var cartItemsChanged = mutations.some(function (mutation) {
       return mutation.target.nodeType === 1 &&
-        mutation.target.closest('cart-drawer-component .cart-drawer__items');
+        !mutation.target.closest('[data-cart-upsell]') &&
+        mutation.target.closest('cart-drawer-component .cart-drawer__items, cart-drawer #CartDrawer-CartItems');
     });
     scheduleCheck(Boolean(cartItemsChanged));
   });
-  observer.observe(observeTarget, { childList: true, subtree: true });
+  observer.observe(document.body, { childList: true, subtree: true });
+  document.addEventListener('shopify:cart:lines-update', function () { scheduleCheck(true); });
 })();
