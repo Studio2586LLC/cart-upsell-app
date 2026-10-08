@@ -20,37 +20,46 @@ import { CalendarIcon } from "@shopify/polaris-icons";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-
-function toDateOnly(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
+import {
+  addCalendarDays,
+  calendarDateInZone,
+  localCalendarDate,
+  startOfCalendarDate,
+} from "../analytics-dates";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
+
+  const shopResponse = await admin.graphql(
+    `#graphql
+      query GetShopAnalyticsContext { shop { currencyCode ianaTimezone } }`,
+  );
+  const shopJson = await shopResponse.json();
+  const currency = shopJson.data?.shop?.currencyCode ?? "USD";
+  const timeZone = shopJson.data?.shop?.ianaTimezone ?? "UTC";
 
   const url = new URL(request.url);
   const rangeParam = url.searchParams.get("range");
   const fromParam = url.searchParams.get("from");
   const toParam = url.searchParams.get("to");
 
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  const defaultFrom = new Date(today);
-  defaultFrom.setUTCDate(defaultFrom.getUTCDate() - 29);
+  const today = calendarDateInZone(new Date(), timeZone);
+  const defaultFrom = addCalendarDays(today, -29);
 
   const isAllTime = rangeParam === "all";
   const validDate = (value: string | null) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
     !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)) &&
-    toDateOnly(new Date(`${value}T00:00:00.000Z`)) === value);
-  const requestedFrom = validDate(fromParam) ? new Date(`${fromParam}T00:00:00.000Z`) : defaultFrom;
-  const requestedTo = validDate(toParam) ? new Date(`${toParam}T23:59:59.999Z`)
-    : new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1);
+    new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value);
+  const requestedFrom = validDate(fromParam) ? fromParam! : defaultFrom;
+  const requestedTo = validDate(toParam) ? toParam! : today;
   const from = requestedFrom <= requestedTo ? requestedFrom : defaultFrom;
-  const to = requestedFrom <= requestedTo ? requestedTo
-    : new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1);
+  const to = requestedFrom <= requestedTo ? requestedTo : today;
 
-  const dateFilter = isAllTime ? {} : { createdAt: { gte: from, lte: to } };
+  const dateFilter = isAllTime ? {} : { createdAt: {
+    gte: startOfCalendarDate(from, timeZone),
+    lt: startOfCalendarDate(addCalendarDays(to, 1), timeZone),
+  } };
 
   const [impressionTotal, clickTotal, addToCartTotal, purchaseTotal, perProduct] = await Promise.all([
     prisma.upsellEvent.aggregate({
@@ -75,13 +84,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       _sum: { quantity: true, amount: true },
     }),
   ]);
-
-  const shopResponse = await admin.graphql(
-    `#graphql
-      query GetShopCurrency { shop { currencyCode } }`,
-  );
-  const shopJson = await shopResponse.json();
-  const currency = shopJson.data?.shop?.currencyCode ?? "USD";
 
   const byProduct = new Map<
     string,
@@ -141,6 +143,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return {
     currency,
+    timeZone,
     impressionCount: impressionTotal._sum.quantity ?? 0,
     clickCount: clickTotal._sum.quantity ?? 0,
     addToCartCount: addToCartTotal._sum.quantity ?? 0,
@@ -149,8 +152,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     rows,
     range: {
       isAllTime,
-      from: isAllTime ? null : toDateOnly(from),
-      to: isAllTime ? null : toDateOnly(to),
+      from: isAllTime ? null : from,
+      to: isAllTime ? null : to,
     },
   };
 };
@@ -170,33 +173,31 @@ const PRESETS: Preset[] = [
   { label: "All time", days: "all" },
 ];
 
-function presetToRange(preset: Preset): { from: string | null; to: string | null; isAllTime: boolean } {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+function presetToRange(preset: Preset, timeZone: string):
+  { from: string | null; to: string | null; isAllTime: boolean } {
+  const today = calendarDateInZone(new Date(), timeZone);
 
   if (preset.days === "all") {
     return { from: null, to: null, isAllTime: true };
   }
   if (preset.days === "today") {
-    return { from: toDateOnly(today), to: toDateOnly(today), isAllTime: false };
+    return { from: today, to: today, isAllTime: false };
   }
   if (preset.days === "yesterday") {
-    const yesterday = new Date(today);
-    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-    return { from: toDateOnly(yesterday), to: toDateOnly(yesterday), isAllTime: false };
+    const yesterday = addCalendarDays(today, -1);
+    return { from: yesterday, to: yesterday, isAllTime: false };
   }
 
-  const from = new Date(today);
-  from.setUTCDate(from.getUTCDate() - (preset.days - 1));
-  return { from: toDateOnly(from), to: toDateOnly(today), isAllTime: false };
+  return { from: addCalendarDays(today, 1 - preset.days), to: today, isAllTime: false };
 }
 
-function formatRangeLabel(from: string | null, to: string | null, isAllTime: boolean) {
+function formatRangeLabel(from: string | null, to: string | null,
+  isAllTime: boolean, timeZone: string) {
   if (isAllTime || !from || !to) return "All time";
 
   const matchingPreset = PRESETS.find((preset) => {
     if (preset.days === "all") return false;
-    const range = presetToRange(preset);
+    const range = presetToRange(preset, timeZone);
     return range.from === from && range.to === to;
   });
   if (matchingPreset) return matchingPreset.label;
@@ -211,10 +212,12 @@ function DateRangeControl({
   from,
   to,
   isAllTime,
+  timeZone,
 }: {
   from: string | null;
   to: string | null;
   isAllTime: boolean;
+  timeZone: string;
 }) {
   const [, setSearchParams] = useSearchParams();
   const [popoverActive, setPopoverActive] = useState(false);
@@ -261,16 +264,16 @@ function DateRangeControl({
   const handlePresetSelect = (selected: string[]) => {
     const preset = PRESETS.find((p) => p.label === selected[0]);
     if (!preset) return;
-    const range = presetToRange(preset);
+    const range = presetToRange(preset, timeZone);
     applyRange(range.from, range.to, range.isAllTime);
   };
 
   const handleApplyCustom = () => {
-    applyRange(toDateOnly(pendingRange.start), toDateOnly(pendingRange.end), false);
+    applyRange(localCalendarDate(pendingRange.start), localCalendarDate(pendingRange.end), false);
   };
 
   const currentPresetLabel = PRESETS.find((preset) => {
-    const range = presetToRange(preset);
+    const range = presetToRange(preset, timeZone);
     return range.isAllTime === isAllTime && range.from === from && range.to === to;
   })?.label;
 
@@ -282,7 +285,7 @@ function DateRangeControl({
       preferredAlignment="right"
       activator={
         <Button onClick={togglePopover} icon={CalendarIcon} disclosure>
-          {formatRangeLabel(from, to, isAllTime)}
+          {formatRangeLabel(from, to, isAllTime, timeZone)}
         </Button>
       }
     >
@@ -343,6 +346,7 @@ export default function Analytics() {
                   from={data.range.from}
                   to={data.range.to}
                   isAllTime={data.range.isAllTime}
+                  timeZone={data.timeZone}
                 />
               </InlineStack>
 
