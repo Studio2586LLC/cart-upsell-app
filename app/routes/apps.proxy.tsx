@@ -36,6 +36,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       buttonLabel: null,
       imageSize: null,
       itemGap: null,
+      maxProducts: 6,
+      shuffleProducts: false,
       pinnedProducts: [],
       products: [],
       excludedProductIds: [],
@@ -52,7 +54,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const direction = settings?.direction ?? "ltr";
   const displayMode = settings?.displayMode ?? "list";
-  const sourceType = settings?.sourceType ?? "collection";
+  const sourceType = settings?.sourceType === "manual" ? "manual" : "collection";
   const headingText = settings?.headingText ?? null;
   const buttonColor = settings?.buttonColor ?? null;
   const buttonTextColor = settings?.buttonTextColor ?? null;
@@ -60,6 +62,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const buttonLabel = settings?.buttonLabel ?? null;
   const imageSize = settings?.imageSize ?? null;
   const itemGap = settings?.itemGap ?? null;
+  const maxProducts = settings?.maxProducts ?? 6;
+  const shuffleProducts = settings?.shuffleProducts ?? false;
   let excludedProductIds: number[] = [];
   try {
     const ids = JSON.parse(settings?.excludedProductIds ?? "[]");
@@ -83,7 +87,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   let manualProducts: RawProduct[] = [];
   let collectionProducts: RawProduct[] = [];
 
-  if (sourceType === "manual" || sourceType === "automatic") {
+  if (sourceType === "manual") {
     const productIds: string[] = settings ? JSON.parse(settings.productIds) : [];
     if (productIds.length > 0) {
       const response = await admin.graphql(
@@ -96,7 +100,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 title
                 handle
                 featuredImage { url altText }
-                variants(first: 1) {
+                variants(first: 10) {
                   nodes { legacyResourceId availableForSale price }
                 }
               }
@@ -109,7 +113,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
 
-  if ((sourceType === "collection" || sourceType === "automatic") && settings?.collectionId) {
+  if (sourceType === "collection" && settings?.collectionId) {
     const response = await admin.graphql(
       `#graphql
         query GetCollectionProducts($id: ID!, $first: Int!) {
@@ -121,7 +125,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 title
                 handle
                 featuredImage { url altText }
-                variants(first: 1) {
+                variants(first: 10) {
                   nodes { legacyResourceId availableForSale price }
                 }
               }
@@ -136,7 +140,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const toOffers = (rawProducts: RawProduct[]) => rawProducts
     .map((product) => {
-      const variant = product.variants.nodes[0];
+      const variant = product.variants.nodes.find((candidate) => candidate.availableForSale);
       if (!variant) return null;
 
       const image = product.featuredImage?.url
@@ -157,7 +161,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     })
     .filter((product): product is NonNullable<typeof product> => product !== null);
 
-  const pinnedProducts = sourceType === "automatic" ? toOffers(manualProducts) : [];
   const products = sourceType === "manual"
     ? toOffers(manualProducts)
     : toOffers(collectionProducts);
@@ -174,13 +177,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     buttonLabel,
     imageSize,
     itemGap,
-    pinnedProducts,
+    maxProducts,
+    shuffleProducts,
+    pinnedProducts: [],
     products,
-    excludedProductIds,
-    minPrice: settings?.minPrice ?? null,
-    maxPrice: settings?.maxPrice ?? null,
-    holdoutPercent: settings?.holdoutPercent ?? 0,
-    experimentId: settings?.experimentId ?? null,
+    excludedProductIds: sourceType === "collection" ? excludedProductIds : [],
+    minPrice: null,
+    maxPrice: null,
+    holdoutPercent: 0,
+    experimentId: null,
   });
 };
 

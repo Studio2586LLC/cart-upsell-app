@@ -39,7 +39,7 @@ model CartUpsellSettings {
   id           String  @id @default(cuid())
   shop         String  @unique
   direction    String  @default("ltr") // "ltr" | "rtl"
-  sourceType   String  @default("collection") // "collection" | "manual" | "automatic"
+  sourceType   String  @default("collection") // "collection" | "manual"
   collectionId String? // Shopify collection GID, used when sourceType is "collection"
   productIds   String  @default("[]") // JSON array of Shopify product GIDs, used when sourceType is "manual"
   excludedProductIds String @default("[]") // JSON array of Shopify product GIDs excluded from every source
@@ -48,6 +48,8 @@ model CartUpsellSettings {
   holdoutPercent Int @default(0) // 0 disables the experiment
   experimentId String?
   displayMode  String  @default("list") // "list" | "slider"
+  maxProducts  Int     @default(6)
+  shuffleProducts Boolean @default(false)
 
   // Design overrides — null means "inherit from the store's theme"
   headingText        String?

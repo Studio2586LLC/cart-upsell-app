@@ -254,15 +254,21 @@ export default function Design() {
                     <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 600 }}>
                       {headingText || "Complete your order"}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: itemGap === "" ? 12 : Number(itemGap) }}>
-                      <div style={{ width: Number(imageSize) || 64, height: Number(imageSize) || 64,
-                        background: "#eee", borderRadius: 4, flexShrink: 0 }} />
-                      <div style={{ flex: 1 }}>Sample product<br /><span style={{ opacity: 0.7 }}>$24.00</span></div>
-                      <button type="button" style={{ background: buttonColor || "#1a1a1a",
-                        color: buttonTextColor || "#fff", border: 0, padding: "10px 18px",
-                        borderRadius: buttonBorderRadius === "" ? 40 : Number(buttonBorderRadius) }}>
-                        {buttonLabel || "Add"}
-                      </button>
+                    <div style={{ display: "flex", flexDirection: "column",
+                      gap: itemGap === "" ? 12 : Number(itemGap) }}>
+                      {["Sample product", "Another product"].map((name) => (
+                        <div key={name} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                          <div style={{ width: imageSize === "" ? 64 : Number(imageSize),
+                            height: imageSize === "" ? 64 : Number(imageSize),
+                            background: "#eee", borderRadius: 4, flexShrink: 0 }} />
+                          <div style={{ flex: 1 }}>{name}<br /><span style={{ opacity: 0.7 }}>$24.00</span></div>
+                          <button type="button" style={{ background: buttonColor || "#1a1a1a",
+                            color: buttonTextColor || "#fff", border: 0, padding: "10px 18px",
+                            borderRadius: buttonBorderRadius === "" ? 40 : Number(buttonBorderRadius) }}>
+                            {buttonLabel || "Add"}
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </BlockStack>

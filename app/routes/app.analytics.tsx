@@ -40,8 +40,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   defaultFrom.setUTCDate(defaultFrom.getUTCDate() - 29);
 
   const isAllTime = rangeParam === "all";
-  const from = fromParam ? new Date(`${fromParam}T00:00:00.000Z`) : defaultFrom;
-  const to = toParam ? new Date(`${toParam}T23:59:59.999Z`) : new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1);
+  const validDate = (value: string | null) => Boolean(value && /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)) &&
+    toDateOnly(new Date(`${value}T00:00:00.000Z`)) === value);
+  const requestedFrom = validDate(fromParam) ? new Date(`${fromParam}T00:00:00.000Z`) : defaultFrom;
+  const requestedTo = validDate(toParam) ? new Date(`${toParam}T23:59:59.999Z`)
+    : new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1);
+  const from = requestedFrom <= requestedTo ? requestedFrom : defaultFrom;
+  const to = requestedFrom <= requestedTo ? requestedTo
+    : new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1);
 
   const dateFilter = isAllTime ? {} : { createdAt: { gte: from, lte: to } };
 
@@ -76,43 +83,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const shopJson = await shopResponse.json();
   const currency = shopJson.data?.shop?.currencyCode ?? "USD";
 
-  const settings = await prisma.cartUpsellSettings.findUnique({
-    where: { shop },
-    select: { experimentId: true, holdoutPercent: true },
-  });
-  let holdout: {
-    controlVisitors: number; variantVisitors: number;
-    controlOrders: number; variantOrders: number;
-    controlRevenue: number; variantRevenue: number;
-  } | null = null;
-  if (settings?.experimentId && settings.holdoutPercent > 0) {
-    const [assignments, orders] = await Promise.all([
-      prisma.experimentAssignment.groupBy({
-        by: ["cohort"], where: { shop, experimentId: settings.experimentId },
-        _count: { _all: true },
-      }),
-      prisma.orderAttribution.groupBy({
-        by: ["cohort"],
-        where: { shop, experimentId: settings.experimentId, currency },
-        _count: { _all: true }, _sum: { amount: true },
-      }),
-    ]);
-    const assignment = (cohort: string) =>
-      assignments.find((row) => row.cohort === cohort)?._count._all ?? 0;
-    const orderCount = (cohort: string) =>
-      orders.find((row) => row.cohort === cohort)?._count._all ?? 0;
-    const revenue = (cohort: string) =>
-      orders.find((row) => row.cohort === cohort)?._sum.amount ?? 0;
-    holdout = {
-      controlVisitors: assignment("control"),
-      variantVisitors: assignment("variant"),
-      controlOrders: orderCount("control"),
-      variantOrders: orderCount("variant"),
-      controlRevenue: revenue("control"),
-      variantRevenue: revenue("variant"),
-    };
-  }
-
   const byProduct = new Map<
     string,
     { impressions: number; clicks: number; addToCart: number; purchases: number; revenue: number }
@@ -144,18 +114,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   if (productIds.length > 0) {
     const gids = productIds.map((id) => `gid://shopify/Product/${id}`);
-    const response = await admin.graphql(
-      `#graphql
-        query GetProductTitles($ids: [ID!]!) {
-          nodes(ids: $ids) {
-            ... on Product { id title legacyResourceId }
-          }
-        }`,
-      { variables: { ids: gids } },
-    );
-    const json = await response.json();
-    for (const node of json.data?.nodes ?? []) {
-      if (node) titles.set(node.legacyResourceId, node.title);
+    for (let offset = 0; offset < gids.length; offset += 250) {
+      const response = await admin.graphql(
+        `#graphql
+          query GetProductTitles($ids: [ID!]!) {
+            nodes(ids: $ids) {
+              ... on Product { id title legacyResourceId }
+            }
+          }`,
+        { variables: { ids: gids.slice(offset, offset + 250) } },
+      );
+      const json = await response.json();
+      for (const node of json.data?.nodes ?? []) {
+        if (node) titles.set(node.legacyResourceId, node.title);
+      }
     }
   }
 
@@ -174,7 +146,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     addToCartCount: addToCartTotal._sum.quantity ?? 0,
     purchaseCount: purchaseTotal._sum.quantity ?? 0,
     revenue: purchaseTotal._sum.amount ?? 0,
-    holdout,
     rows,
     range: {
       isAllTime,
@@ -211,12 +182,12 @@ function presetToRange(preset: Preset): { from: string | null; to: string | null
   }
   if (preset.days === "yesterday") {
     const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
     return { from: toDateOnly(yesterday), to: toDateOnly(yesterday), isAllTime: false };
   }
 
   const from = new Date(today);
-  from.setDate(from.getDate() - (preset.days - 1));
+  from.setUTCDate(from.getUTCDate() - (preset.days - 1));
   return { from: toDateOnly(from), to: toDateOnly(today), isAllTime: false };
 }
 
@@ -379,7 +350,7 @@ export default function Analytics() {
                 <Card>
                   <BlockStack gap="100">
                     <Text as="span" tone="subdued">
-                      Offers shown
+                      Product impressions
                     </Text>
                     <Text as="p" variant="heading2xl">
                       {data.impressionCount}
@@ -434,7 +405,7 @@ export default function Analytics() {
                 <Card>
                   <BlockStack gap="100">
                     <Text as="span" tone="subdued">
-                      Attributed upsell revenue
+                      Tagged upsell line revenue
                     </Text>
                     <Text as="p" variant="heading2xl">
                       {formatter.format(data.revenue)}
@@ -442,46 +413,6 @@ export default function Analytics() {
                   </BlockStack>
                 </Card>
               </InlineGrid>
-
-              <Card>
-                <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">Revenue holdout test</Text>
-                  {!data.holdout ? (
-                    <Text as="p" tone="subdued">
-                      Enable a holdout in Settings to compare cart visitors with and without offers.
-                    </Text>
-                  ) : (
-                    <>
-                      <Text as="p" tone="subdued">
-                        Current test, all time. Revenue per assigned visitor includes the
-                        whole paid order. The difference is directional, not proof of
-                        statistical significance.
-                      </Text>
-                      <DataTable
-                        columnContentTypes={["text", "numeric", "numeric", "numeric", "numeric"]}
-                        headings={["Group", "Visitors", "Orders", "Order revenue", "Revenue / visitor"]}
-                        rows={([
-                          ["No offers", data.holdout.controlVisitors,
-                            data.holdout.controlOrders, data.holdout.controlRevenue],
-                          ["Offers shown", data.holdout.variantVisitors,
-                            data.holdout.variantOrders, data.holdout.variantRevenue],
-                        ] as [string, number, number, number][]).map(([label, visitors, orders, revenue]) => [
-                          label, visitors, orders, formatter.format(revenue),
-                          visitors ? formatter.format(revenue / visitors) : "—",
-                        ])}
-                      />
-                      {data.holdout.controlVisitors > 0 && data.holdout.variantVisitors > 0 && (
-                        <Text as="p">
-                          Difference per visitor: {formatter.format(
-                            data.holdout.variantRevenue / data.holdout.variantVisitors -
-                            data.holdout.controlRevenue / data.holdout.controlVisitors,
-                          )}
-                        </Text>
-                      )}
-                    </>
-                  )}
-                </BlockStack>
-              </Card>
 
               <Card>
                 <BlockStack gap="400">

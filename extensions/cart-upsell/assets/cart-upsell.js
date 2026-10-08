@@ -2,8 +2,7 @@
   if (window.__cartUpsellInit) return;
   window.__cartUpsellInit = true;
 
-  var MAX_ITEMS = 6;
-  var MAX_RECOMMENDATION_SEEDS = 3;
+  var MAX_ITEMS = 20;
   var checkScheduled = false;
   var refreshScheduled = false;
   var lastImpressionKey = '';
@@ -11,7 +10,7 @@
   var clickedForExposure = {};
   var activeImpressionObserver = null;
   var productCache = {};
-  var experimentSync = {};
+  var shuffleSeed = Math.random();
 
   var MARKUP =
     '<div class="cart-upsell__header">' +
@@ -51,53 +50,14 @@
     }
   }
 
-  function assignExperiment(config, cart) {
-    if (!config.experimentId || !config.holdoutPercent || !cart.items.length) {
-      return Promise.resolve('variant');
+  function shuffleRank(key, productId) {
+    var hash = 2166136261;
+    var text = key + ':' + productId;
+    for (var i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
     }
-    var experimentId = config.experimentId;
-    if (experimentSync[experimentId]) return experimentSync[experimentId];
-
-    var visitorId;
-    var cohort;
-    try {
-      visitorId = localStorage.getItem('cartUpsellVisitorId');
-      if (!visitorId) {
-        visitorId = window.crypto.randomUUID();
-        localStorage.setItem('cartUpsellVisitorId', visitorId);
-      }
-      cohort = localStorage.getItem('cartUpsellGroup:' + experimentId);
-      if (!cohort) {
-        var bucket = window.crypto.getRandomValues(new Uint32Array(1))[0] % 100;
-        cohort = bucket < config.holdoutPercent ? 'control' : 'variant';
-        localStorage.setItem('cartUpsellGroup:' + experimentId, cohort);
-      }
-    } catch (e) {
-      return Promise.resolve('untracked');
-    }
-
-    experimentSync[experimentId] = fetch(window.Shopify.routes.root + 'cart/update.js', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ attributes: {
-        __cart_upsell_test: experimentId + ':' + cohort,
-      } }),
-    }).then(function (response) {
-      if (!response.ok) throw new Error('Could not mark cart for holdout test');
-      return fetch(window.Shopify.routes.root + 'apps/cart-upsell', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'assignment', experimentId: experimentId,
-          visitorId: visitorId, cohort: cohort }),
-      });
-    }).then(function (response) {
-      if (!response.ok) throw new Error('Could not record assignment');
-      return cohort;
-    }).catch(function () {
-      delete experimentSync[experimentId];
-      return 'untracked';
-    });
-    return experimentSync[experimentId];
+    return hash >>> 0;
   }
 
   function ensureMounted(refresh) {
@@ -146,20 +106,12 @@
       .then(function (results) {
         var config = results[0];
         var cart = results[1];
-        return assignExperiment(config, cart).then(function (cohort) {
-          if (cohort !== 'variant' || config.sourceType !== 'automatic') {
-            return { config: config, cart: cart, recommendations: [], cohort: cohort };
-          }
-          return fetchRecommendations(cart).then(function (recommendations) {
-            return { config: config, cart: cart, recommendations: recommendations,
-              cohort: cohort };
-          });
-        });
+        return { config: config, cart: cart };
       })
       .then(function (data) {
         var config = data.config;
         var cart = data.cart;
-        if (data.cohort !== 'variant') {
+        if (!cart.items || cart.items.length === 0) {
           return { config: config, cart: cart, products: [] };
         }
         var cartProductIds = cart.items.map(function (item) {
@@ -168,8 +120,7 @@
         var excludedProductIds = config.excludedProductIds || [];
 
         var seen = {};
-        var products = (config.pinnedProducts || [])
-          .concat(data.recommendations, config.products || [])
+        var products = (config.products || [])
           .filter(function (product) {
             if (cartProductIds.indexOf(product.productId) !== -1 ||
                 excludedProductIds.indexOf(product.productId) !== -1 ||
@@ -189,7 +140,17 @@
               (config.maxPrice === null || config.maxPrice === undefined ||
                 product.price <= config.maxPrice);
           });
-          return { config: config, cart: cart, products: eligible.slice(0, MAX_ITEMS) };
+          if (config.shuffleProducts) {
+            var key = String(shuffleSeed) + ':' + cart.items.map(function (item) {
+              return item.key;
+            }).join('|');
+            eligible.sort(function (a, b) {
+              return shuffleRank(key, a.productId) - shuffleRank(key, b.productId);
+            });
+          }
+          var limit = Number.isInteger(config.maxProducts) && config.maxProducts >= 1
+            ? Math.min(config.maxProducts, MAX_ITEMS) : 6;
+          return { config: config, cart: cart, products: eligible.slice(0, limit) };
         });
       })
       .then(function (data) {
@@ -199,6 +160,7 @@
         var products = data.products;
 
         if (products.length === 0) {
+          if (activeImpressionObserver) activeImpressionObserver.disconnect();
           root.hidden = true;
           return;
         }
@@ -222,9 +184,9 @@
         if (config.buttonBorderRadius !== null && config.buttonBorderRadius !== undefined) {
           root.style.setProperty('--cart-upsell-btn-radius', config.buttonBorderRadius + 'px');
         }
-        if (config.imageSize) {
-          root.style.setProperty('--cart-upsell-image-size', config.imageSize + 'px');
-        }
+        var imageSize = Number.isInteger(config.imageSize) && config.imageSize >= 40 &&
+          config.imageSize <= 120 ? config.imageSize : 64;
+        root.style.setProperty('--cart-upsell-image-size', imageSize + 'px');
         if (config.itemGap !== null && config.itemGap !== undefined) {
           root.style.setProperty('--cart-upsell-item-gap', config.itemGap + 'px');
         }
@@ -242,7 +204,7 @@
           } catch (e) {
             formatter = null;
           }
-          track.appendChild(renderItem(product, formatter, config.buttonLabel || labels.add));
+          track.appendChild(renderItem(product, formatter, config.buttonLabel || labels.add, imageSize));
         });
 
         if (isSlider) {
@@ -309,72 +271,6 @@
     });
   }
 
-  function fetchRecommendations(cart) {
-    var seeds = [];
-    cart.items.slice().sort(function (a, b) {
-      return (b.final_line_price || 0) - (a.final_line_price || 0);
-    }).forEach(function (item) {
-      if (seeds.length < MAX_RECOMMENDATION_SEEDS && seeds.indexOf(item.product_id) === -1) {
-        seeds.push(item.product_id);
-      }
-    });
-
-    return Promise.all(seeds.map(function (productId) {
-      var url = window.Shopify.routes.root +
-        'recommendations/products.json?intent=related&limit=10&product_id=' + productId;
-      return fetch(url)
-        .then(function (response) {
-          if (!response.ok) return { products: [] };
-          return response.json();
-        })
-        .then(function (data) {
-          return data.products || [];
-        })
-        .catch(function () {
-          return [];
-        });
-    })).then(function (groups) {
-      var candidates = {};
-      groups.forEach(function (group, seedIndex) {
-        group.forEach(function (product, position) {
-          var variant = (product.variants || []).find(function (candidate) {
-            return candidate.available;
-          });
-          if (!product.available || !variant) return;
-
-          var price = Number(variant.price) / 100;
-          if (!Number.isFinite(price) || price <= 0) return;
-          var cartSubtotal = Number(cart.items_subtotal_price) / 100;
-          var score = 10 - position + (price <= cartSubtotal / 2 ? 5 : 0);
-          var id = String(product.id);
-          if (candidates[id]) {
-            candidates[id].score += score + 10;
-            return;
-          }
-
-          candidates[id] = {
-            productId: Number(product.id),
-            variantId: Number(variant.id),
-            title: product.title,
-            url: product.url.indexOf('/products/') === 0
-              ? window.Shopify.routes.root + product.url.slice(1)
-              : product.url,
-            image: product.featured_image || (product.images || [])[0] || null,
-            price: price,
-            currency: cart.currency,
-            score: score - seedIndex,
-          };
-        });
-      });
-
-      return Object.keys(candidates).map(function (id) {
-        return candidates[id];
-      }).sort(function (a, b) {
-        return b.score - a.score;
-      });
-    });
-  }
-
   function setUpSlider(root, track, itemCount) {
     var wrapper = root.querySelector('.cart-upsell__track-wrapper');
     var nav = root.querySelector('.cart-upsell__nav');
@@ -427,7 +323,7 @@
     update();
   }
 
-  function renderItem(product, formatter, buttonLabel) {
+  function renderItem(product, formatter, buttonLabel, imageSize) {
     var item = document.createElement('div');
     item.className = 'cart-upsell__item';
     item.dataset.cartUpsellProductId = String(product.productId);
@@ -439,7 +335,7 @@
       (product.image
         ? '<img class="cart-upsell__img" src="' +
           escapeAttribute(product.image) +
-          '" alt="" width="64" height="64" loading="lazy">'
+          '" alt="" width="' + imageSize + '" height="' + imageSize + '" loading="lazy">'
         : '') +
       '</a>' +
       '<div class="cart-upsell__info">' +
@@ -450,6 +346,12 @@
       escapeHtml(buttonLabel) + '</button>';
 
     var button = item.querySelector('.cart-upsell__btn');
+    var image = item.querySelector('.cart-upsell__img');
+    if (image) {
+      image.style.setProperty('width', imageSize + 'px', 'important');
+      image.style.setProperty('height', imageSize + 'px', 'important');
+      image.style.setProperty('max-width', 'none', 'important');
+    }
     button.addEventListener('click', function () {
       trackOfferClick(product.productId);
       addToCart(button, product);

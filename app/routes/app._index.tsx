@@ -11,13 +11,14 @@ import {
   Select,
   RadioButton,
   Button,
+  TextField,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
 type Direction = "ltr" | "rtl";
-type SourceType = "collection" | "manual" | "automatic";
+type SourceType = "collection" | "manual";
 type DisplayMode = "list" | "slider";
 
 type PickedResource = { id: string; title: string };
@@ -48,7 +49,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   const direction = (settings?.direction ?? "ltr") as Direction;
-  const sourceType = (settings?.sourceType ?? "collection") as SourceType;
+  const sourceType: SourceType = settings?.sourceType === "manual" ? "manual" : "collection";
   const displayMode = (settings?.displayMode ?? "list") as DisplayMode;
   const collectionId = settings?.collectionId ?? null;
   const productIds = parseProductIds(settings?.productIds);
@@ -84,7 +85,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     selectedProducts = (json.data?.nodes ?? []).filter(Boolean);
   }
 
-  if (excludedProductIds.length > 0) {
+  if (sourceType === "collection" && collectionId && excludedProductIds.length > 0) {
     const response = await admin.graphql(
       `#graphql
         query GetExcludedProducts($ids: [ID!]!) {
@@ -105,9 +106,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     selectedCollection,
     selectedProducts,
     excludedProducts,
-    minPrice: settings?.minPrice?.toString() ?? "",
-    maxPrice: settings?.maxPrice?.toString() ?? "",
-    holdoutPercent: String(settings?.holdoutPercent ?? 0),
+    maxProducts: String(settings?.maxProducts ?? 6),
+    shuffleProducts: settings?.shuffleProducts ?? false,
     themeEditorUrl: `https://${session.shop}/admin/themes/current/editor?context=apps&activateAppId=${process.env.SHOPIFY_API_KEY}/cart-upsell-embed`,
   };
 };
@@ -118,41 +118,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const direction: Direction =
     formData.get("direction")?.toString() === "rtl" ? "rtl" : "ltr";
-  const sourceType: SourceType =
-    formData.get("sourceType")?.toString() === "automatic"
-      ? "automatic"
-      : formData.get("sourceType")?.toString() === "manual"
-        ? "manual"
-        : "collection";
+  const sourceType: SourceType = formData.get("sourceType")?.toString() === "manual"
+    ? "manual" : "collection";
   const displayMode: DisplayMode =
     formData.get("displayMode")?.toString() === "slider" ? "slider" : "list";
   const collectionId = formData.get("collectionId")?.toString() || null;
   const productIds = parseProductIds(formData.get("productIds")?.toString());
-  const excludedProductIds = parseProductIds(formData.get("excludedProductIds")?.toString());
-  const parsePrice = (value: FormDataEntryValue | null) => {
-    const raw = value?.toString().trim();
-    if (!raw) return null;
-    const amount = Number(raw);
-    return Number.isFinite(amount) && amount >= 0 && amount <= 1000000
-      ? amount
-      : NaN;
-  };
-  const minPrice = parsePrice(formData.get("minPrice"));
-  const maxPrice = parsePrice(formData.get("maxPrice"));
-  const holdoutPercent = Number(formData.get("holdoutPercent"));
-  if (Number.isNaN(minPrice) || Number.isNaN(maxPrice) ||
-      (minPrice !== null && maxPrice !== null && minPrice > maxPrice) ||
-      ![0, 10, 20].includes(holdoutPercent)) {
-    return { ok: false, error: "Enter valid price limits (minimum must not exceed maximum)." };
+  const excludedProductIds = sourceType === "collection" && collectionId
+    ? parseProductIds(formData.get("excludedProductIds")?.toString()) : [];
+  const maxProducts = Number(formData.get("maxProducts"));
+  const shuffleProducts = formData.get("shuffleProducts")?.toString() === "true";
+  if (!Number.isInteger(maxProducts) || maxProducts < 1 || maxProducts > 20) {
+    return { ok: false, error: "Choose between 1 and 20 products." };
   }
-
-  const existingSettings = await prisma.cartUpsellSettings.findUnique({
-    where: { shop: session.shop },
-    select: { holdoutPercent: true, experimentId: true },
-  });
-  const experimentId = holdoutPercent === 0 ? null
-    : existingSettings?.holdoutPercent === holdoutPercent && existingSettings.experimentId
-      ? existingSettings.experimentId : crypto.randomUUID();
 
   await prisma.cartUpsellSettings.upsert({
     where: { shop: session.shop },
@@ -164,10 +142,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       collectionId,
       productIds: JSON.stringify(productIds),
       excludedProductIds: JSON.stringify(excludedProductIds),
-      minPrice,
-      maxPrice,
-      holdoutPercent,
-      experimentId,
+      maxProducts,
+      shuffleProducts,
+      minPrice: null,
+      maxPrice: null,
+      holdoutPercent: 0,
+      experimentId: null,
     },
     update: {
       direction,
@@ -176,10 +156,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       collectionId,
       productIds: JSON.stringify(productIds),
       excludedProductIds: JSON.stringify(excludedProductIds),
-      minPrice,
-      maxPrice,
-      holdoutPercent,
-      experimentId,
+      maxProducts,
+      shuffleProducts,
+      minPrice: null,
+      maxPrice: null,
+      holdoutPercent: 0,
+      experimentId: null,
     },
   });
 
@@ -203,9 +185,8 @@ export default function Settings() {
   const [excludedProducts, setExcludedProducts] = useState<PickedResource[]>(
     data.excludedProducts,
   );
-  const [minPrice, setMinPrice] = useState(data.minPrice);
-  const [maxPrice, setMaxPrice] = useState(data.maxPrice);
-  const [holdoutPercent, setHoldoutPercent] = useState(data.holdoutPercent);
+  const [maxProducts, setMaxProducts] = useState(data.maxProducts);
+  const [shuffleProducts, setShuffleProducts] = useState(data.shuffleProducts);
   const [themeStatus, setThemeStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const [themeActivations, setThemeActivations] = useState<ThemeActivation[]>([]);
 
@@ -299,9 +280,8 @@ export default function Settings() {
         collectionId: collection?.id ?? "",
         productIds: JSON.stringify(products.map((product) => product.id)),
         excludedProductIds: JSON.stringify(excludedProducts.map((product) => product.id)),
-        minPrice,
-        maxPrice,
-        holdoutPercent,
+        maxProducts,
+        shuffleProducts: String(shuffleProducts),
       },
       { method: "POST" },
     );
@@ -309,7 +289,7 @@ export default function Settings() {
 
   return (
     <Page>
-      <TitleBar title="Cart Upsell" />
+      <TitleBar title="Settings" />
       <BlockStack gap="500">
         <Layout>
           <Layout.Section>
@@ -346,11 +326,15 @@ export default function Settings() {
                   </a>
                 </BlockStack>
               </Card>
-              <Card>
+              <div id="language"><Card>
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingMd">
                     Layout
                   </Text>
+                  <Text as="p" tone="subdued">
+                    Set the reading direction here. Edit the widget heading and button text in Design.
+                  </Text>
+                  <Button url="/app/design" variant="plain">Edit widget text</Button>
                   <InlineStack gap="400">
                     <RadioButton
                       label="Left to right (LTR)"
@@ -377,74 +361,14 @@ export default function Settings() {
                     onChange={(value) => setDisplayMode(value as DisplayMode)}
                   />
                 </BlockStack>
-              </Card>
+              </Card></div>
 
-              <Card>
-                <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">Offer rules</Text>
-                  <Text as="p" tone="subdued">
-                    Exclusions apply to manual, collection, and automatic suggestions.
-                    Price limits use your store currency; they are skipped when a
-                    shopper views a different currency.
-                  </Text>
-                  <Button onClick={pickExcludedProducts}>Exclude products</Button>
-                  {excludedProducts.map((product) => (
-                    <InlineStack key={product.id} align="space-between" blockAlign="center">
-                      <Text as="span">{product.title}</Text>
-                      <Button
-                        onClick={() => setExcludedProducts((current) =>
-                          current.filter((entry) => entry.id !== product.id))}
-                        variant="plain"
-                        tone="critical"
-                      >
-                        Remove
-                      </Button>
-                    </InlineStack>
-                  ))}
-                  <InlineStack gap="400">
-                    <label>
-                      Minimum price
-                      <input type="number" min="0" max="1000000" step="0.01"
-                        value={minPrice} onChange={(event) => setMinPrice(event.target.value)} />
-                    </label>
-                    <label>
-                      Maximum price
-                      <input type="number" min="0" max="1000000" step="0.01"
-                        value={maxPrice} onChange={(event) => setMaxPrice(event.target.value)} />
-                    </label>
-                  </InlineStack>
-                </BlockStack>
-              </Card>
-
-              <Card>
-                <BlockStack gap="300">
-                  <Text as="h2" variant="headingMd">Revenue holdout test</Text>
-                  <Text as="p" tone="subdued">
-                    Hide offers from a random share of cart visitors, then compare
-                    paid order revenue per assigned visitor. Changing the percentage
-                    starts a new test. Keep it running long enough to collect orders.
-                  </Text>
-                  <Select label="Holdout share"
-                    options={[{ label: "Off", value: "0" },
-                      { label: "10%", value: "10" },
-                      { label: "20%", value: "20" }]}
-                    value={holdoutPercent} onChange={setHoldoutPercent} />
-                </BlockStack>
-              </Card>
-
-              <Card>
+              <div id="products"><Card>
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingMd">
                     Products to upsell
                   </Text>
                   <InlineStack gap="400">
-                    <RadioButton
-                      label="Automatic suggestions"
-                      checked={sourceType === "automatic"}
-                      id="source-automatic"
-                      name="sourceType"
-                      onChange={() => setSourceType("automatic")}
-                    />
                     <RadioButton
                       label="From a collection"
                       checked={sourceType === "collection"}
@@ -461,56 +385,22 @@ export default function Settings() {
                     />
                   </InlineStack>
 
-                  {sourceType === "automatic" ? (
-                    <BlockStack gap="300">
-                      <Text as="p" tone="subdued">
-                        Selected products appear first. Related products for
-                        items in the cart fill the remaining spots, followed
-                        by products from the fallback collection.
-                      </Text>
-                      <Button onClick={pickProducts}>Choose fallback products</Button>
-                      {products.map((product) => (
-                        <InlineStack
-                          key={product.id}
-                          align="space-between"
-                          blockAlign="center"
-                        >
-                          <Text as="span">{product.title}</Text>
-                          <Button
-                            onClick={() => removeProduct(product.id)}
-                            variant="plain"
-                            tone="critical"
-                          >
-                            Remove
-                          </Button>
-                        </InlineStack>
-                      ))}
-                      {collection ? (
-                        <InlineStack align="space-between" blockAlign="center">
-                          <Text as="span">Fallback collection: {collection.title}</Text>
-                          <Button onClick={pickCollection} variant="plain">
-                            Change
-                          </Button>
-                        </InlineStack>
-                      ) : (
-                        <Button onClick={pickCollection}>
-                          Choose fallback collection
-                        </Button>
-                      )}
-                    </BlockStack>
-                  ) : sourceType === "collection" ? (
+                  {sourceType === "collection" ? (
                     <BlockStack gap="200">
-                      {collection ? (
-                        <InlineStack align="space-between" blockAlign="center">
-                          <Text as="span">{collection.title}</Text>
-                          <Button onClick={pickCollection} variant="plain">
-                            Change
-                          </Button>
-                        </InlineStack>
-                      ) : (
-                        <Button onClick={pickCollection}>
-                          Choose a collection
-                        </Button>
+                      <Button onClick={pickCollection}>Choose a collection</Button>
+                      {collection && (
+                        <BlockStack gap="200">
+                          <Button onClick={pickExcludedProducts}>Exclude products</Button>
+                          <Text as="p" tone="subdued">Selected collection: {collection.title}</Text>
+                          {excludedProducts.map((product) => (
+                            <InlineStack key={product.id} align="space-between" blockAlign="center">
+                              <Text as="span">{product.title}</Text>
+                              <Button onClick={() => setExcludedProducts((current) =>
+                                current.filter((entry) => entry.id !== product.id))}
+                                variant="plain" tone="critical">Remove</Button>
+                            </InlineStack>
+                          ))}
+                        </BlockStack>
                       )}
                     </BlockStack>
                   ) : (
@@ -534,8 +424,14 @@ export default function Settings() {
                       ))}
                     </BlockStack>
                   )}
+                  <TextField label="Maximum products shown" type="number"
+                    value={maxProducts} onChange={setMaxProducts} min={1} max={20}
+                    autoComplete="off" helpText="Show up to 20 eligible products" />
+                  <RadioButton label="Shuffle product order"
+                    checked={shuffleProducts} id="shuffle-products"
+                    onChange={() => setShuffleProducts((value: boolean) => !value)} />
                 </BlockStack>
-              </Card>
+              </Card></div>
 
               <InlineStack>
                 <Button

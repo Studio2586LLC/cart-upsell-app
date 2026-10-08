@@ -1,0 +1,3 @@
+ALTER TABLE "CartUpsellSettings"
+  ADD COLUMN "maxProducts" INTEGER NOT NULL DEFAULT 6,
+  ADD COLUMN "shuffleProducts" BOOLEAN NOT NULL DEFAULT false;
