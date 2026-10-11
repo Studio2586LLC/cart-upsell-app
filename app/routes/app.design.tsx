@@ -221,11 +221,11 @@ export default function Design() {
   };
 
   return (
-    <Page>
+    <Page fullWidth>
       <TitleBar title="Design" />
       <BlockStack gap="500">
         <Layout>
-          <Layout.Section>
+          <Layout.Section variant="oneHalf">
             <BlockStack gap="500">
               <Card>
                 <BlockStack gap="400">
@@ -319,6 +319,20 @@ export default function Design() {
                 </BlockStack>
               </Card>
 
+              <InlineStack>
+                <Button
+                  variant="primary"
+                  loading={isSaving}
+                  onClick={handleSave}
+                >
+                  Save
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          </Layout.Section>
+
+          <Layout.Section variant="oneHalf">
+            <BlockStack gap="500">
               <Card>
                 <BlockStack gap="300">
                   <Text as="h2" variant="headingMd">Preview</Text>
@@ -386,16 +400,6 @@ export default function Design() {
                   </div>
                 </BlockStack>
               </Card>
-
-              <InlineStack>
-                <Button
-                  variant="primary"
-                  loading={isSaving}
-                  onClick={handleSave}
-                >
-                  Save
-                </Button>
-              </InlineStack>
             </BlockStack>
           </Layout.Section>
         </Layout>
