@@ -207,6 +207,11 @@
         } else {
           root.style.removeProperty('--cart-upsell-swatch-border-color');
         }
+        if (config.selectedOutlineColor && /^#[0-9a-f]{6}$/i.test(config.selectedOutlineColor)) {
+          root.style.setProperty('--cart-upsell-selected-outline-color', config.selectedOutlineColor);
+        } else {
+          root.style.removeProperty('--cart-upsell-selected-outline-color');
+        }
         root.style.setProperty('--cart-upsell-swatch-radius',
           config.swatchShape === 'square' ? '4px' : '50%');
         if (config.itemGap !== null && config.itemGap !== undefined) {

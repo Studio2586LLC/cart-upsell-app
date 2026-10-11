@@ -64,6 +64,7 @@ model CartUpsellSettings {
   swatchSize         Int     @default(28)
   swatchBorderWidth  Int     @default(1)
   swatchBorderColor  String?
+  selectedOutlineColor String?
   otherOptionStyle   String  @default("boxes") // "boxes" | "dropdown"
   variantLayout      String  @default("select") // "select" | "regular"
 

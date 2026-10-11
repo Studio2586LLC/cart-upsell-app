@@ -38,6 +38,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     swatchSize: (settings?.swatchSize ?? 28).toString(),
     swatchBorderWidth: (settings?.swatchBorderWidth ?? 1).toString(),
     swatchBorderColor: settings?.swatchBorderColor ?? "",
+    selectedOutlineColor: settings?.selectedOutlineColor ?? "",
     otherOptionStyle: settings?.otherOptionStyle ?? "boxes",
     variantLayout: settings?.variantLayout ?? "select",
   };
@@ -72,12 +73,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const swatchSize = parseSize("swatchSize", 16, 48);
   const swatchBorderWidth = parseSize("swatchBorderWidth", 0, 6);
   const swatchBorderColor = formData.get("swatchBorderColor")?.toString().trim() || null;
+  const selectedOutlineColor = formData.get("selectedOutlineColor")?.toString().trim() || null;
   const otherOptionStyle = formData.get("otherOptionStyle")?.toString();
   const variantLayout = formData.get("variantLayout")?.toString();
   if (Number.isNaN(imageSize) || Number.isNaN(itemGap) ||
       swatchSize === null || Number.isNaN(swatchSize) ||
       swatchBorderWidth === null || Number.isNaN(swatchBorderWidth) ||
       (swatchBorderColor !== null && !/^#[0-9a-f]{6}$/i.test(swatchBorderColor)) ||
+      (selectedOutlineColor !== null && !/^#[0-9a-f]{6}$/i.test(selectedOutlineColor)) ||
       !["circle", "square"].includes(swatchShape ?? "") ||
       !["boxes", "dropdown"].includes(otherOptionStyle ?? "") ||
       !["select", "regular"].includes(variantLayout ?? "") ||
@@ -104,6 +107,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       swatchSize,
       swatchBorderWidth,
       swatchBorderColor,
+      selectedOutlineColor,
       otherOptionStyle: otherOptionStyle!,
       variantLayout: variantLayout!,
     },
@@ -120,6 +124,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       swatchSize,
       swatchBorderWidth,
       swatchBorderColor,
+      selectedOutlineColor,
       otherOptionStyle: otherOptionStyle!,
       variantLayout: variantLayout!,
     },
@@ -202,6 +207,7 @@ export default function Design() {
   const [swatchSize, setSwatchSize] = useState(data.swatchSize);
   const [swatchBorderWidth, setSwatchBorderWidth] = useState(data.swatchBorderWidth);
   const [swatchBorderColor, setSwatchBorderColor] = useState(data.swatchBorderColor);
+  const [selectedOutlineColor, setSelectedOutlineColor] = useState(data.selectedOutlineColor);
   const [otherOptionStyle, setOtherOptionStyle] = useState(data.otherOptionStyle);
   const [variantLayout, setVariantLayout] = useState(data.variantLayout);
   const [previewPickerOpen, setPreviewPickerOpen] = useState(false);
@@ -215,6 +221,8 @@ export default function Design() {
     ? Number(swatchBorderWidth) : 1;
   const previewBorderColor = /^#[0-9a-f]{6}$/i.test(swatchBorderColor)
     ? swatchBorderColor : "rgba(0, 0, 0, 0.2)";
+  const previewSelectedOutlineColor = /^#[0-9a-f]{6}$/i.test(selectedOutlineColor)
+    ? selectedOutlineColor : "";
   const previewButtonStyle = {
     background: /^#[0-9a-f]{6}$/i.test(buttonColor) ? buttonColor : "#1a1a1a",
     color: /^#[0-9a-f]{6}$/i.test(buttonTextColor) ? buttonTextColor : "#fff",
@@ -238,7 +246,8 @@ export default function Design() {
     fetcher.submit(
       { headingText, buttonLabel, selectButtonLabel, buttonColor, buttonTextColor,
         buttonBorderRadius, imageSize, itemGap, swatchShape, swatchSize,
-        swatchBorderWidth, swatchBorderColor, otherOptionStyle, variantLayout },
+        swatchBorderWidth, swatchBorderColor, selectedOutlineColor,
+        otherOptionStyle, variantLayout },
       { method: "POST" },
     );
   };
@@ -350,6 +359,9 @@ export default function Design() {
                   <ColorField label="Swatch border color" value={swatchBorderColor}
                     onChange={setSwatchBorderColor} placeholder="#333333"
                     helpText="Leave blank for the default border color" />
+                  <ColorField label="Selected outline color" value={selectedOutlineColor}
+                    onChange={setSelectedOutlineColor} placeholder="#333333"
+                    helpText="Leave blank to use the current outline colors" />
                   <Select label="Other option style" options={[
                     { label: "Selectable text boxes", value: "boxes" },
                     { label: "Dropdown", value: "dropdown" },
@@ -401,7 +413,7 @@ export default function Design() {
                                     border: `1px solid ${previewBorderColor}`,
                                     borderRadius: swatchShape === "square" ? 4 : "50%",
                                     outline: previewColor === name && previewBorderWidth > 0
-                                      ? `${previewBorderWidth}px solid ${swatchBorderColor || "#333"}` : "none",
+                                      ? `${previewBorderWidth}px solid ${previewSelectedOutlineColor || swatchBorderColor || "#333"}` : "none",
                                     outlineOffset: 2,
                                     color: "#fff", textShadow: "0 0 2px #000, 0 0 2px #000",
                                     fontSize: 14, fontWeight: 700 }}>
@@ -423,7 +435,8 @@ export default function Design() {
                                   onClick={() => setPreviewSize(size)}
                                   style={{ border: "1px solid currentColor", borderRadius: 3,
                                     padding: "4px 8px", background: "transparent", cursor: "pointer",
-                                    outline: previewSize === size ? "2px solid currentColor" : "none",
+                                    outline: previewSize === size
+                                      ? `2px solid ${previewSelectedOutlineColor || "currentColor"}` : "none",
                                     outlineOffset: 2 }}>{size}</button>
                               ))}
                             </div>

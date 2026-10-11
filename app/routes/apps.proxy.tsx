@@ -44,6 +44,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       swatchSize: 28,
       swatchBorderWidth: 1,
       swatchBorderColor: null,
+      selectedOutlineColor: null,
       otherOptionStyle: "boxes",
       variantLayout: "select",
       maxProducts: 6,
@@ -77,6 +78,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const swatchSize = settings?.swatchSize ?? 28;
   const swatchBorderWidth = settings?.swatchBorderWidth ?? 1;
   const swatchBorderColor = settings?.swatchBorderColor ?? null;
+  const selectedOutlineColor = settings?.selectedOutlineColor ?? null;
   const otherOptionStyle = settings?.otherOptionStyle ?? "boxes";
   const variantLayout = settings?.variantLayout ?? "select";
   const maxProducts = settings?.maxProducts ?? 6;
@@ -219,6 +221,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     swatchSize,
     swatchBorderWidth,
     swatchBorderColor,
+    selectedOutlineColor,
     otherOptionStyle,
     variantLayout,
     maxProducts,
