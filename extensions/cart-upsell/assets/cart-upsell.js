@@ -22,6 +22,13 @@
     '</div>' +
     '<div class="cart-upsell__track-wrapper"><div class="cart-upsell__track"></div></div>';
 
+  var IMAGE_PLACEHOLDER =
+    '<svg viewBox="0 0 40 40" fill="none" aria-hidden="true">' +
+    '<rect x="5" y="7" width="30" height="26" rx="2" stroke="currentColor" stroke-width="2"/>' +
+    '<circle cx="27" cy="15" r="3" stroke="currentColor" stroke-width="2"/>' +
+    '<path d="m6 28 9-9 7 7 4-4 8 8" stroke="currentColor" stroke-width="2"' +
+    ' stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
   function labelsFor(root) {
     var source = root.dataset.cartUpsellHeading
       ? root : document.querySelector('[data-cart-upsell-i18n]');
@@ -262,7 +269,14 @@
 
       return productCache[cacheKey].then(function (storefrontProduct) {
         if (!storefrontProduct) return null;
-        var variants = storefrontProduct.variants || [];
+        var storefrontVariants = storefrontProduct.variants || [];
+        var adminVariants = product.variants || [];
+        var variants = storefrontVariants.length >= adminVariants.length
+          ? storefrontVariants : adminVariants.map(function (candidate) {
+            return storefrontVariants.find(function (storefrontVariant) {
+              return Number(storefrontVariant.id) === candidate.id;
+            }) || candidate;
+          });
         var variant = variants.find(function (candidate) {
           return candidate.available && Number(candidate.id) === product.variantId;
         }) || variants.find(function (candidate) {
@@ -281,7 +295,7 @@
           price: Number(variant.price) / 100,
           currency: cart.currency,
           variants: variants,
-          options: (storefrontProduct.options || []).map(function (option) {
+          options: (storefrontProduct.options || product.options || []).map(function (option) {
             return typeof option === 'string' ? option : option.name;
           }),
           fallbackImage: product.image,
@@ -355,6 +369,7 @@
 
     item.innerHTML =
       '<a href="' + escapeAttribute(product.url) + '" class="cart-upsell__img-link" tabindex="-1">' +
+      '<span class="cart-upsell__img-placeholder">' + IMAGE_PLACEHOLDER + '</span>' +
       (product.image
         ? '<img class="cart-upsell__img" src="' +
           escapeAttribute(product.image) +
@@ -370,6 +385,10 @@
       escapeHtml(hasVariants && !pickerOpen ? config.selectButtonLabel || labels.select : buttonLabel) + '</button>';
 
     var button = item.querySelector('.cart-upsell__btn');
+    if (config.buttonTextColor && /^#[0-9a-f]{6}$/i.test(config.buttonTextColor)) {
+      button.style.setProperty('color', config.buttonTextColor, 'important');
+      button.style.setProperty('-webkit-text-fill-color', config.buttonTextColor, 'important');
+    }
     var image = item.querySelector('.cart-upsell__img');
     var variant = product.variants && product.variants.find(function (candidate) {
       return Number(candidate.id) === product.variantId;
@@ -379,6 +398,7 @@
       renderOptions();
     }
     if (image) {
+      image.addEventListener('error', function () { image.remove(); });
       image.style.setProperty('width', imageSize + 'px', 'important');
       image.style.setProperty('height', imageSize + 'px', 'important');
       image.style.setProperty('max-width', 'none', 'important');

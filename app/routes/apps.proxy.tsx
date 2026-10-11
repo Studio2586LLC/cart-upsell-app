@@ -11,11 +11,14 @@ type RawProduct = {
   title: string;
   handle: string;
   featuredImage?: { url: string; altText: string | null } | null;
+  options: { name: string }[];
   variants: {
     nodes: {
       legacyResourceId: string;
       availableForSale: boolean;
       price: string;
+      selectedOptions: { name: string; value: string }[];
+      image?: { url: string } | null;
     }[];
   };
 };
@@ -114,8 +117,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 title
                 handle
                 featuredImage { url altText }
+                options { name }
                 variants(first: 10) {
-                  nodes { legacyResourceId availableForSale price }
+                  nodes {
+                    legacyResourceId availableForSale price
+                    selectedOptions { name value }
+                    image { url }
+                  }
                 }
               }
             }
@@ -139,8 +147,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 title
                 handle
                 featuredImage { url altText }
+                options { name }
                 variants(first: 10) {
-                  nodes { legacyResourceId availableForSale price }
+                  nodes {
+                    legacyResourceId availableForSale price
+                    selectedOptions { name value }
+                    image { url }
+                  }
                 }
               }
             }
@@ -171,6 +184,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         url: `/products/${product.handle}`,
         image,
         price: variant.price,
+        options: (product.options ?? []).map((option) => option.name),
+        variants: product.variants.nodes.map((candidate) => ({
+          id: Number(candidate.legacyResourceId),
+          available: candidate.availableForSale,
+          price: Math.round(Number(candidate.price) * 100),
+          option1: candidate.selectedOptions?.[0]?.value ?? null,
+          option2: candidate.selectedOptions?.[1]?.value ?? null,
+          option3: candidate.selectedOptions?.[2]?.value ?? null,
+          featured_image: candidate.image?.url ? { src: candidate.image.url } : null,
+        })),
       };
     })
     .filter((product): product is NonNullable<typeof product> => product !== null);

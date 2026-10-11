@@ -16,12 +16,13 @@ import {
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { ProductThumbnail } from "../components/ProductThumbnail";
 
 type Direction = "ltr" | "rtl";
 type SourceType = "collection" | "manual";
 type DisplayMode = "list" | "slider";
 
-type PickedResource = { id: string; title: string };
+type PickedResource = { id: string; title: string; image?: string | null };
 type ThemeActivation = {
   handle: string;
   status: "active" | "available" | "unavailable";
@@ -76,13 +77,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       `#graphql
         query GetProducts($ids: [ID!]!) {
           nodes(ids: $ids) {
-            ... on Product { id title }
+            ... on Product { id title featuredImage { url } }
           }
         }`,
       { variables: { ids: productIds } },
     );
     const json = await response.json();
-    selectedProducts = (json.data?.nodes ?? []).filter(Boolean);
+    selectedProducts = (json.data?.nodes ?? []).filter(Boolean).map(
+      (product: { id: string; title: string; featuredImage?: { url: string } | null }) => ({
+        id: product.id,
+        title: product.title,
+        image: product.featuredImage?.url ?? null,
+      }),
+    );
   }
 
   if (sourceType === "collection" && collectionId && excludedProductIds.length > 0) {
@@ -90,13 +97,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       `#graphql
         query GetExcludedProducts($ids: [ID!]!) {
           nodes(ids: $ids) {
-            ... on Product { id title }
+            ... on Product { id title featuredImage { url } }
           }
         }`,
       { variables: { ids: excludedProductIds } },
     );
     const json = await response.json();
-    excludedProducts = (json.data?.nodes ?? []).filter(Boolean);
+    excludedProducts = (json.data?.nodes ?? []).filter(Boolean).map(
+      (product: { id: string; title: string; featuredImage?: { url: string } | null }) => ({
+        id: product.id,
+        title: product.title,
+        image: product.featuredImage?.url ?? null,
+      }),
+    );
   }
 
   return {
@@ -245,10 +258,12 @@ export default function Settings() {
     });
     if (picked?.selection) {
       setProducts(
-        picked.selection.map((product) => ({
-          id: product.id,
-          title: product.title,
-        })),
+        picked.selection.map((product) => {
+          const image = (product as typeof product & {
+            images?: { originalSrc?: string }[];
+          }).images?.[0]?.originalSrc;
+          return { id: product.id, title: product.title, image: image ?? null };
+        }),
       );
     }
   }, [products, shopify]);
@@ -264,10 +279,12 @@ export default function Settings() {
       selectionIds: excludedProducts.map((product) => ({ id: product.id })),
     });
     if (picked?.selection) {
-      setExcludedProducts(picked.selection.map((product) => ({
-        id: product.id,
-        title: product.title,
-      })));
+      setExcludedProducts(picked.selection.map((product) => {
+        const image = (product as typeof product & {
+          images?: { originalSrc?: string }[];
+        }).images?.[0]?.originalSrc;
+        return { id: product.id, title: product.title, image: image ?? null };
+      }));
     }
   }, [excludedProducts, shopify]);
 
@@ -394,7 +411,10 @@ export default function Settings() {
                           <Text as="p" tone="subdued">Selected collection: {collection.title}</Text>
                           {excludedProducts.map((product) => (
                             <InlineStack key={product.id} align="space-between" blockAlign="center">
-                              <Text as="span">{product.title}</Text>
+                              <InlineStack gap="300" blockAlign="center" wrap={false}>
+                                <ProductThumbnail src={product.image} size={40} />
+                                <Text as="span">{product.title}</Text>
+                              </InlineStack>
                               <Button onClick={() => setExcludedProducts((current) =>
                                 current.filter((entry) => entry.id !== product.id))}
                                 variant="plain" tone="critical">Remove</Button>
@@ -412,7 +432,10 @@ export default function Settings() {
                           align="space-between"
                           blockAlign="center"
                         >
-                          <Text as="span">{product.title}</Text>
+                          <InlineStack gap="300" blockAlign="center" wrap={false}>
+                            <ProductThumbnail src={product.image} size={40} />
+                            <Text as="span">{product.title}</Text>
+                          </InlineStack>
                           <Button
                             onClick={() => removeProduct(product.id)}
                             variant="plain"

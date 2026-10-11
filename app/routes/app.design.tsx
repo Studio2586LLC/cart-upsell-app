@@ -16,6 +16,7 @@ import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import styles from "../styles/design.module.css";
+import { ProductThumbnail } from "../components/ProductThumbnail";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -383,9 +384,7 @@ export default function Design() {
                     <div style={{ display: "flex", flexDirection: "column",
                       gap: itemGap === "" ? 12 : Number(itemGap) }}>
                       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 12 }}>
-                        <div style={{ width: imageSize === "" ? 64 : Number(imageSize),
-                          height: imageSize === "" ? 64 : Number(imageSize),
-                          background: "#eee", borderRadius: 4, flexShrink: 0 }} />
+                        <ProductThumbnail size={imageSize === "" ? 64 : Number(imageSize)} />
                         <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>
                           <div>Sample product</div>
                           <div style={{ opacity: 0.7 }}>$24.00</div>
@@ -437,9 +436,7 @@ export default function Design() {
                         </button>
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
-                        <div style={{ width: imageSize === "" ? 64 : Number(imageSize),
-                          height: imageSize === "" ? 64 : Number(imageSize),
-                          background: "#eee", borderRadius: 4, flexShrink: 0 }} />
+                        <ProductThumbnail size={imageSize === "" ? 64 : Number(imageSize)} />
                         <div style={{ flex: 1, fontSize: 13 }}>Single variant product<br />
                           <span style={{ opacity: 0.7 }}>$18.00</span></div>
                         <button type="button" style={previewButtonStyle}>{buttonLabel || "Add"}</button>
