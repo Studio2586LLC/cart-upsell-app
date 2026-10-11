@@ -34,6 +34,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     itemGap: settings?.itemGap?.toString() ?? "",
     swatchShape: settings?.swatchShape ?? "circle",
     swatchSize: (settings?.swatchSize ?? 28).toString(),
+    swatchBorderWidth: (settings?.swatchBorderWidth ?? 1).toString(),
+    swatchBorderColor: settings?.swatchBorderColor ?? "",
     otherOptionStyle: settings?.otherOptionStyle ?? "boxes",
   };
 };
@@ -64,9 +66,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const itemGap = parseSize("itemGap", 0, 40);
   const swatchShape = formData.get("swatchShape")?.toString();
   const swatchSize = parseSize("swatchSize", 16, 48);
+  const swatchBorderWidth = parseSize("swatchBorderWidth", 0, 6);
+  const swatchBorderColor = formData.get("swatchBorderColor")?.toString().trim() || null;
   const otherOptionStyle = formData.get("otherOptionStyle")?.toString();
   if (Number.isNaN(imageSize) || Number.isNaN(itemGap) ||
       swatchSize === null || Number.isNaN(swatchSize) ||
+      swatchBorderWidth === null || Number.isNaN(swatchBorderWidth) ||
+      (swatchBorderColor !== null && !/^#[0-9a-f]{6}$/i.test(swatchBorderColor)) ||
       !["circle", "square"].includes(swatchShape ?? "") ||
       !["boxes", "dropdown"].includes(otherOptionStyle ?? "") ||
       [buttonColor, buttonTextColor].some((color) => color !== null &&
@@ -89,6 +95,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       itemGap,
       swatchShape: swatchShape!,
       swatchSize,
+      swatchBorderWidth,
+      swatchBorderColor,
       otherOptionStyle: otherOptionStyle!,
     },
     update: {
@@ -101,6 +109,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       itemGap,
       swatchShape: swatchShape!,
       swatchSize,
+      swatchBorderWidth,
+      swatchBorderColor,
       otherOptionStyle: otherOptionStyle!,
     },
   });
@@ -113,11 +123,13 @@ function ColorField({
   value,
   onChange,
   placeholder,
+  helpText = "Leave blank to use the store theme's color",
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
+  helpText?: string;
 }) {
   return (
     <InlineStack gap="200" blockAlign="end" wrap={false}>
@@ -128,7 +140,7 @@ function ColorField({
           onChange={onChange}
           placeholder={placeholder}
           autoComplete="off"
-          helpText="Leave blank to use the store theme's color"
+          helpText={helpText}
         />
       </div>
       <Box
@@ -168,7 +180,26 @@ export default function Design() {
   const [itemGap, setItemGap] = useState(data.itemGap);
   const [swatchShape, setSwatchShape] = useState(data.swatchShape);
   const [swatchSize, setSwatchSize] = useState(data.swatchSize);
+  const [swatchBorderWidth, setSwatchBorderWidth] = useState(data.swatchBorderWidth);
+  const [swatchBorderColor, setSwatchBorderColor] = useState(data.swatchBorderColor);
   const [otherOptionStyle, setOtherOptionStyle] = useState(data.otherOptionStyle);
+  const [previewColor, setPreviewColor] = useState("Burgundy");
+  const [previewSize, setPreviewSize] = useState("Small");
+
+  const previewSwatchSize = Number(swatchSize) >= 16 && Number(swatchSize) <= 48
+    ? Number(swatchSize) : 28;
+  const previewBorderWidth = Number(swatchBorderWidth) >= 0 && Number(swatchBorderWidth) <= 6
+    ? Number(swatchBorderWidth) : 1;
+  const previewBorderColor = /^#[0-9a-f]{6}$/i.test(swatchBorderColor)
+    ? swatchBorderColor : "rgba(0, 0, 0, 0.2)";
+  const previewButtonStyle = {
+    background: /^#[0-9a-f]{6}$/i.test(buttonColor) ? buttonColor : "#1a1a1a",
+    color: /^#[0-9a-f]{6}$/i.test(buttonTextColor) ? buttonTextColor : "#fff",
+    border: 0,
+    padding: "10px 18px",
+    borderRadius: buttonBorderRadius === "" ? 40 : Number(buttonBorderRadius),
+    cursor: "default",
+  };
 
   const isSaving = fetcher.state !== "idle";
 
@@ -183,7 +214,8 @@ export default function Design() {
   const handleSave = () => {
     fetcher.submit(
       { headingText, buttonLabel, buttonColor, buttonTextColor,
-        buttonBorderRadius, imageSize, itemGap, swatchShape, swatchSize, otherOptionStyle },
+        buttonBorderRadius, imageSize, itemGap, swatchShape, swatchSize,
+        swatchBorderWidth, swatchBorderColor, otherOptionStyle },
       { method: "POST" },
     );
   };
@@ -274,6 +306,12 @@ export default function Design() {
                   <TextField label="Swatch size (px)" type="number"
                     value={swatchSize} onChange={setSwatchSize} autoComplete="off"
                     helpText="16–48 px" />
+                  <TextField label="Swatch border thickness (px)" type="number"
+                    value={swatchBorderWidth} onChange={setSwatchBorderWidth} autoComplete="off"
+                    helpText="0–6 px" />
+                  <ColorField label="Swatch border color" value={swatchBorderColor}
+                    onChange={setSwatchBorderColor} placeholder="#333333"
+                    helpText="Leave blank for the default border color" />
                   <Select label="Other option style" options={[
                     { label: "Selectable text boxes", value: "boxes" },
                     { label: "Dropdown", value: "dropdown" },
@@ -293,19 +331,57 @@ export default function Design() {
                     </div>
                     <div style={{ display: "flex", flexDirection: "column",
                       gap: itemGap === "" ? 12 : Number(itemGap) }}>
-                      {["Sample product", "Another product"].map((name) => (
-                        <div key={name} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <div style={{ width: imageSize === "" ? 64 : Number(imageSize),
-                            height: imageSize === "" ? 64 : Number(imageSize),
-                            background: "#eee", borderRadius: 4, flexShrink: 0 }} />
-                          <div style={{ flex: 1 }}>{name}<br /><span style={{ opacity: 0.7 }}>$24.00</span></div>
-                          <button type="button" style={{ background: buttonColor || "#1a1a1a",
-                            color: buttonTextColor || "#fff", border: 0, padding: "10px 18px",
-                            borderRadius: buttonBorderRadius === "" ? 40 : Number(buttonBorderRadius) }}>
-                            {buttonLabel || "Add"}
-                          </button>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                        <div style={{ width: imageSize === "" ? 64 : Number(imageSize),
+                          height: imageSize === "" ? 64 : Number(imageSize),
+                          background: "#eee", borderRadius: 4, flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>
+                          <div>Sample product</div>
+                          <div style={{ opacity: 0.7 }}>$24.00</div>
+                          <div style={{ marginTop: 8, fontSize: 10, letterSpacing: "0.06em", opacity: 0.6 }}>COLOR</div>
+                          <div style={{ display: "flex", gap: 7, marginTop: 5 }}>
+                            {([ ["Burgundy", "#800020"], ["Blue", "#2563eb"], ["Gray", "#808080"] ] as const)
+                              .map(([name, color]) => (
+                                <button key={name} type="button" title={name} aria-label={`Color: ${name}`}
+                                  aria-pressed={previewColor === name} onClick={() => setPreviewColor(name)}
+                                  style={{ width: previewSwatchSize, height: previewSwatchSize,
+                                    flexShrink: 0, padding: 0, cursor: "pointer",
+                                    background: color, border: `${previewBorderWidth}px solid ${previewBorderColor}`,
+                                    borderRadius: swatchShape === "square" ? 4 : "50%",
+                                    outline: previewColor === name ? `2px solid ${swatchBorderColor || "#333"}` : "none",
+                                    outlineOffset: 2 }} />
+                              ))}
+                          </div>
+                          <div style={{ marginTop: 10, fontSize: 10, letterSpacing: "0.06em", opacity: 0.6 }}>SIZE</div>
+                          {otherOptionStyle === "dropdown" ? (
+                            <select aria-label="Preview size" value={previewSize}
+                              onChange={(event) => setPreviewSize(event.target.value)}
+                              style={{ marginTop: 5, padding: "5px 8px", maxWidth: "100%" }}>
+                              <option>Small</option><option>Medium</option><option>Large</option>
+                            </select>
+                          ) : (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 5 }}>
+                              {["Small", "Medium", "Large"].map((size) => (
+                                <button key={size} type="button" aria-pressed={previewSize === size}
+                                  onClick={() => setPreviewSize(size)}
+                                  style={{ border: "1px solid currentColor", borderRadius: 3,
+                                    padding: "4px 8px", background: "transparent", cursor: "pointer",
+                                    outline: previewSize === size ? "2px solid currentColor" : "none",
+                                    outlineOffset: 2 }}>{size}</button>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      ))}
+                        <button type="button" style={previewButtonStyle}>{buttonLabel || "Add"}</button>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ width: imageSize === "" ? 64 : Number(imageSize),
+                          height: imageSize === "" ? 64 : Number(imageSize),
+                          background: "#eee", borderRadius: 4, flexShrink: 0 }} />
+                        <div style={{ flex: 1, fontSize: 13 }}>Single variant product<br />
+                          <span style={{ opacity: 0.7 }}>$18.00</span></div>
+                        <button type="button" style={previewButtonStyle}>{buttonLabel || "Add"}</button>
+                      </div>
                     </div>
                   </div>
                 </BlockStack>

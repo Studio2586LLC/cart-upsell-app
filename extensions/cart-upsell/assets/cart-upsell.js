@@ -191,6 +191,15 @@
         var swatchSize = Number.isInteger(config.swatchSize) && config.swatchSize >= 16 &&
           config.swatchSize <= 48 ? config.swatchSize : 28;
         root.style.setProperty('--cart-upsell-swatch-size', swatchSize + 'px');
+        var swatchBorderWidth = Number.isInteger(config.swatchBorderWidth) &&
+          config.swatchBorderWidth >= 0 && config.swatchBorderWidth <= 6
+          ? config.swatchBorderWidth : 1;
+        root.style.setProperty('--cart-upsell-swatch-border-width', swatchBorderWidth + 'px');
+        if (config.swatchBorderColor && /^#[0-9a-f]{6}$/i.test(config.swatchBorderColor)) {
+          root.style.setProperty('--cart-upsell-swatch-border-color', config.swatchBorderColor);
+        } else {
+          root.style.removeProperty('--cart-upsell-swatch-border-color');
+        }
         root.style.setProperty('--cart-upsell-swatch-radius',
           config.swatchShape === 'square' ? '4px' : '50%');
         if (config.itemGap !== null && config.itemGap !== undefined) {

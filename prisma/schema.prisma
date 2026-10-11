@@ -61,6 +61,8 @@ model CartUpsellSettings {
   itemGap            Int?
   swatchShape        String  @default("circle") // "circle" | "square"
   swatchSize         Int     @default(28)
+  swatchBorderWidth  Int     @default(1)
+  swatchBorderColor  String?
   otherOptionStyle   String  @default("boxes") // "boxes" | "dropdown"
 
   updatedAt DateTime @updatedAt

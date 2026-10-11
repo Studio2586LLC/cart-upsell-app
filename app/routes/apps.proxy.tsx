@@ -38,6 +38,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       itemGap: null,
       swatchShape: "circle",
       swatchSize: 28,
+      swatchBorderWidth: 1,
+      swatchBorderColor: null,
       otherOptionStyle: "boxes",
       maxProducts: 6,
       shuffleProducts: false,
@@ -67,6 +69,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const itemGap = settings?.itemGap ?? null;
   const swatchShape = settings?.swatchShape ?? "circle";
   const swatchSize = settings?.swatchSize ?? 28;
+  const swatchBorderWidth = settings?.swatchBorderWidth ?? 1;
+  const swatchBorderColor = settings?.swatchBorderColor ?? null;
   const otherOptionStyle = settings?.otherOptionStyle ?? "boxes";
   const maxProducts = settings?.maxProducts ?? 6;
   const shuffleProducts = settings?.shuffleProducts ?? false;
@@ -185,6 +189,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     itemGap,
     swatchShape,
     swatchSize,
+    swatchBorderWidth,
+    swatchBorderColor,
     otherOptionStyle,
     maxProducts,
     shuffleProducts,
