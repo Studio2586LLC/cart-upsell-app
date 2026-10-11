@@ -397,12 +397,7 @@
       item.classList.add('cart-upsell__item--expanded');
       renderOptions();
     }
-    if (image) {
-      image.addEventListener('error', function () { image.remove(); });
-      image.style.setProperty('width', imageSize + 'px', 'important');
-      image.style.setProperty('height', imageSize + 'px', 'important');
-      image.style.setProperty('max-width', 'none', 'important');
-    }
+    if (image) prepareImage(image);
     button.addEventListener('click', function () {
       trackOfferClick(product.productId);
       if (hasVariants && !pickerOpen) {
@@ -503,9 +498,36 @@
       item.querySelector('.cart-upsell__price').textContent = formatter
         ? formatter.format(product.price) : String(product.price);
       item.querySelectorAll('a').forEach(function (link) { link.href = product.url; });
-      if (image && product.image) image.src = product.image;
+      updateImage(product.image);
       button.dataset.variantId = String(product.variantId);
       renderOptions();
+    }
+
+    function prepareImage(element) {
+      element.addEventListener('error', function () {
+        if (image === element) image = null;
+        element.remove();
+      });
+      element.style.setProperty('width', imageSize + 'px', 'important');
+      element.style.setProperty('height', imageSize + 'px', 'important');
+      element.style.setProperty('max-width', 'none', 'important');
+    }
+
+    function updateImage(src) {
+      if (!src) {
+        if (image) image.remove();
+        image = null;
+        return;
+      }
+      if (!image) {
+        image = document.createElement('img');
+        image.className = 'cart-upsell__img';
+        image.alt = '';
+        image.loading = 'lazy';
+        prepareImage(image);
+        item.querySelector('.cart-upsell__img-link').appendChild(image);
+      }
+      image.src = src;
     }
 
     item.querySelectorAll('a').forEach(function (link) {
