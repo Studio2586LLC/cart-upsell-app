@@ -23,6 +23,25 @@
 .colorPreview {
   flex: none;
   padding-top: 24px;
+  position: relative;
+}
+
+.colorPreview:focus-within {
+  outline: 2px solid var(--p-color-border-focus, #005bd3);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.colorInput {
+  position: absolute;
+  top: 24px;
+  left: 0;
+  width: 100%;
+  height: calc(100% - 24px);
+  opacity: 0;
+  cursor: pointer;
+  padding: 0;
+  border: 0;
 }
 
 @media (max-width: 800px) {

@@ -27,6 +27,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return {
     headingText: settings?.headingText ?? "",
     buttonLabel: settings?.buttonLabel ?? "",
+    selectButtonLabel: settings?.selectButtonLabel ?? "",
     buttonColor: settings?.buttonColor ?? "",
     buttonTextColor: settings?.buttonTextColor ?? "",
     buttonBorderRadius: settings?.buttonBorderRadius?.toString() ?? "",
@@ -37,6 +38,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     swatchBorderWidth: (settings?.swatchBorderWidth ?? 1).toString(),
     swatchBorderColor: settings?.swatchBorderColor ?? "",
     otherOptionStyle: settings?.otherOptionStyle ?? "boxes",
+    variantLayout: settings?.variantLayout ?? "select",
   };
 };
 
@@ -46,6 +48,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const headingText = formData.get("headingText")?.toString().trim().slice(0, 120) || null;
   const buttonLabel = formData.get("buttonLabel")?.toString().trim().slice(0, 60) || null;
+  const selectButtonLabel = formData.get("selectButtonLabel")?.toString().trim().slice(0, 60) || null;
   const buttonColor = formData.get("buttonColor")?.toString().trim() || null;
   const buttonTextColor =
     formData.get("buttonTextColor")?.toString().trim() || null;
@@ -69,12 +72,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const swatchBorderWidth = parseSize("swatchBorderWidth", 0, 6);
   const swatchBorderColor = formData.get("swatchBorderColor")?.toString().trim() || null;
   const otherOptionStyle = formData.get("otherOptionStyle")?.toString();
+  const variantLayout = formData.get("variantLayout")?.toString();
   if (Number.isNaN(imageSize) || Number.isNaN(itemGap) ||
       swatchSize === null || Number.isNaN(swatchSize) ||
       swatchBorderWidth === null || Number.isNaN(swatchBorderWidth) ||
       (swatchBorderColor !== null && !/^#[0-9a-f]{6}$/i.test(swatchBorderColor)) ||
       !["circle", "square"].includes(swatchShape ?? "") ||
       !["boxes", "dropdown"].includes(otherOptionStyle ?? "") ||
+      !["select", "regular"].includes(variantLayout ?? "") ||
       [buttonColor, buttonTextColor].some((color) => color !== null &&
         !/^#[0-9a-f]{6}$/i.test(color)) ||
       (buttonBorderRadius !== null &&
@@ -88,6 +93,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       shop: session.shop,
       headingText,
       buttonLabel,
+      selectButtonLabel,
       buttonColor,
       buttonTextColor,
       buttonBorderRadius,
@@ -98,10 +104,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       swatchBorderWidth,
       swatchBorderColor,
       otherOptionStyle: otherOptionStyle!,
+      variantLayout: variantLayout!,
     },
     update: {
       headingText,
       buttonLabel,
+      selectButtonLabel,
       buttonColor,
       buttonTextColor,
       buttonBorderRadius,
@@ -112,6 +120,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       swatchBorderWidth,
       swatchBorderColor,
       otherOptionStyle: otherOptionStyle!,
+      variantLayout: variantLayout!,
     },
   });
 
@@ -159,6 +168,13 @@ function ColorField({
             }}
           />
         </Box>
+        <input
+          type="color"
+          className={styles.colorInput}
+          aria-label={`${label} color picker`}
+          value={/^#[0-9a-f]{6}$/i.test(value) ? value : placeholder}
+          onChange={(event) => onChange(event.currentTarget.value)}
+        />
       </div>
     </InlineStack>
   );
@@ -171,6 +187,7 @@ export default function Design() {
 
   const [headingText, setHeadingText] = useState(data.headingText);
   const [buttonLabel, setButtonLabel] = useState(data.buttonLabel);
+  const [selectButtonLabel, setSelectButtonLabel] = useState(data.selectButtonLabel);
   const [buttonColor, setButtonColor] = useState(data.buttonColor);
   const [buttonTextColor, setButtonTextColor] = useState(
     data.buttonTextColor,
@@ -185,8 +202,11 @@ export default function Design() {
   const [swatchBorderWidth, setSwatchBorderWidth] = useState(data.swatchBorderWidth);
   const [swatchBorderColor, setSwatchBorderColor] = useState(data.swatchBorderColor);
   const [otherOptionStyle, setOtherOptionStyle] = useState(data.otherOptionStyle);
+  const [variantLayout, setVariantLayout] = useState(data.variantLayout);
+  const [previewPickerOpen, setPreviewPickerOpen] = useState(false);
   const [previewColor, setPreviewColor] = useState("Burgundy");
   const [previewSize, setPreviewSize] = useState("Small");
+  const showPreviewOptions = variantLayout === "regular" || previewPickerOpen;
 
   const previewSwatchSize = Number(swatchSize) >= 16 && Number(swatchSize) <= 48
     ? Number(swatchSize) : 28;
@@ -215,9 +235,9 @@ export default function Design() {
 
   const handleSave = () => {
     fetcher.submit(
-      { headingText, buttonLabel, buttonColor, buttonTextColor,
+      { headingText, buttonLabel, selectButtonLabel, buttonColor, buttonTextColor,
         buttonBorderRadius, imageSize, itemGap, swatchShape, swatchSize,
-        swatchBorderWidth, swatchBorderColor, otherOptionStyle },
+        swatchBorderWidth, swatchBorderColor, otherOptionStyle, variantLayout },
       { method: "POST" },
     );
   };
@@ -247,6 +267,14 @@ export default function Design() {
                     value={buttonLabel}
                     onChange={setButtonLabel}
                     placeholder="Add"
+                    autoComplete="off"
+                    helpText="Leave blank for the translated default"
+                  />
+                  <TextField
+                    label="Select button text"
+                    value={selectButtonLabel}
+                    onChange={setSelectButtonLabel}
+                    placeholder="Select"
                     autoComplete="off"
                     helpText="Leave blank for the translated default"
                   />
@@ -301,6 +329,13 @@ export default function Design() {
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingMd">Variant choices</Text>
                   <Text as="p" tone="subdued">Color options appear as swatches. Other options use the style selected below.</Text>
+                  <Select label="Variant layout" options={[
+                    { label: "Select to show", value: "select" },
+                    { label: "Regular", value: "regular" },
+                  ]} value={variantLayout} onChange={(value) => {
+                    setVariantLayout(value);
+                    setPreviewPickerOpen(false);
+                  }} helpText="Select to show reveals variant choices after the Select button is clicked" />
                   <Select label="Swatch shape" options={[
                     { label: "Circle", value: "circle" },
                     { label: "Square", value: "square" },
@@ -354,6 +389,7 @@ export default function Design() {
                         <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>
                           <div>Sample product</div>
                           <div style={{ opacity: 0.7 }}>$24.00</div>
+                          {showPreviewOptions && <>
                           <div style={{ marginTop: 8, fontSize: 10, letterSpacing: "0.06em", opacity: 0.6 }}>COLOR</div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 5 }}>
                             {([ ["Burgundy", "#800020"], ["Blue", "#2563eb"], ["Gray", "#808080"] ] as const)
@@ -362,10 +398,16 @@ export default function Design() {
                                   aria-pressed={previewColor === name} onClick={() => setPreviewColor(name)}
                                   style={{ width: previewSwatchSize, height: previewSwatchSize,
                                     flexShrink: 0, padding: 0, cursor: "pointer",
-                                    background: color, border: `${previewBorderWidth}px solid ${previewBorderColor}`,
+                                    boxSizing: "border-box", background: color,
+                                    border: `1px solid ${previewBorderColor}`,
                                     borderRadius: swatchShape === "square" ? 4 : "50%",
-                                    outline: previewColor === name ? `2px solid ${swatchBorderColor || "#333"}` : "none",
-                                    outlineOffset: 2 }} />
+                                    outline: previewColor === name && previewBorderWidth > 0
+                                      ? `${previewBorderWidth}px solid ${swatchBorderColor || "#333"}` : "none",
+                                    outlineOffset: 2,
+                                    color: "#fff", textShadow: "0 0 2px #000, 0 0 2px #000",
+                                    fontSize: 14, fontWeight: 700 }}>
+                                  {previewColor === name && previewBorderWidth === 0 ? "✓" : null}
+                                </button>
                               ))}
                           </div>
                           <div style={{ marginTop: 10, fontSize: 10, letterSpacing: "0.06em", opacity: 0.6 }}>SIZE</div>
@@ -387,8 +429,12 @@ export default function Design() {
                               ))}
                             </div>
                           )}
+                          </>}
                         </div>
-                        <button type="button" style={previewButtonStyle}>{buttonLabel || "Add"}</button>
+                        <button type="button" style={previewButtonStyle}
+                          onClick={() => { if (!showPreviewOptions) setPreviewPickerOpen(true); }}>
+                          {showPreviewOptions ? buttonLabel || "Add" : selectButtonLabel || "Select"}
+                        </button>
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
                         <div style={{ width: imageSize === "" ? 64 : Number(imageSize),

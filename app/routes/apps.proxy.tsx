@@ -34,6 +34,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       buttonTextColor: null,
       buttonBorderRadius: null,
       buttonLabel: null,
+      selectButtonLabel: null,
       imageSize: null,
       itemGap: null,
       swatchShape: "circle",
@@ -41,6 +42,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       swatchBorderWidth: 1,
       swatchBorderColor: null,
       otherOptionStyle: "boxes",
+      variantLayout: "select",
       maxProducts: 6,
       shuffleProducts: false,
       pinnedProducts: [],
@@ -65,6 +67,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const buttonTextColor = settings?.buttonTextColor ?? null;
   const buttonBorderRadius = settings?.buttonBorderRadius ?? null;
   const buttonLabel = settings?.buttonLabel ?? null;
+  const selectButtonLabel = settings?.selectButtonLabel ?? null;
   const imageSize = settings?.imageSize ?? null;
   const itemGap = settings?.itemGap ?? null;
   const swatchShape = settings?.swatchShape ?? "circle";
@@ -72,6 +75,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const swatchBorderWidth = settings?.swatchBorderWidth ?? 1;
   const swatchBorderColor = settings?.swatchBorderColor ?? null;
   const otherOptionStyle = settings?.otherOptionStyle ?? "boxes";
+  const variantLayout = settings?.variantLayout ?? "select";
   const maxProducts = settings?.maxProducts ?? 6;
   const shuffleProducts = settings?.shuffleProducts ?? false;
   let excludedProductIds: number[] = [];
@@ -185,6 +189,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     buttonTextColor,
     buttonBorderRadius,
     buttonLabel,
+    selectButtonLabel,
     imageSize,
     itemGap,
     swatchShape,
@@ -192,6 +197,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     swatchBorderWidth,
     swatchBorderColor,
     otherOptionStyle,
+    variantLayout,
     maxProducts,
     shuffleProducts,
     pinnedProducts: [],

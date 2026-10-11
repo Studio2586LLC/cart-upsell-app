@@ -54,6 +54,7 @@ model CartUpsellSettings {
   // Design overrides — null means "inherit from the store's theme"
   headingText        String?
   buttonLabel        String?
+  selectButtonLabel  String?
   buttonColor        String?
   buttonTextColor    String?
   buttonBorderRadius Int?
@@ -64,6 +65,7 @@ model CartUpsellSettings {
   swatchBorderWidth  Int     @default(1)
   swatchBorderColor  String?
   otherOptionStyle   String  @default("boxes") // "boxes" | "dropdown"
+  variantLayout      String  @default("select") // "select" | "regular"
 
   updatedAt DateTime @updatedAt
 }

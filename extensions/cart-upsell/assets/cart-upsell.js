@@ -348,6 +348,8 @@
     var item = document.createElement('div');
     item.className = 'cart-upsell__item';
     item.dataset.cartUpsellProductId = String(product.productId);
+    var hasVariants = Boolean(product.variants && product.variants.length > 1);
+    var pickerOpen = hasVariants && config.variantLayout === 'regular';
 
     var price = formatter ? formatter.format(Number(product.price)) : product.price;
 
@@ -362,17 +364,20 @@
       '<div class="cart-upsell__info">' +
       '<a href="' + escapeAttribute(product.url) + '" class="cart-upsell__name">' + escapeHtml(product.title) + '</a>' +
       '<span class="cart-upsell__price">' + escapeHtml(price) + '</span>' +
-      '<div class="cart-upsell__options" hidden></div>' +
+      '<div class="cart-upsell__options"' + (pickerOpen ? '' : ' hidden') + '></div>' +
       '</div>' +
       '<button type="button" class="cart-upsell__btn" data-variant-id="' + product.variantId + '">' +
-      escapeHtml(product.variants && product.variants.length > 1 ? labels.select : buttonLabel) + '</button>';
+      escapeHtml(hasVariants && !pickerOpen ? config.selectButtonLabel || labels.select : buttonLabel) + '</button>';
 
     var button = item.querySelector('.cart-upsell__btn');
     var image = item.querySelector('.cart-upsell__img');
     var variant = product.variants && product.variants.find(function (candidate) {
       return Number(candidate.id) === product.variantId;
     });
-    var pickerOpen = false;
+    if (pickerOpen) {
+      item.classList.add('cart-upsell__item--expanded');
+      renderOptions();
+    }
     if (image) {
       image.style.setProperty('width', imageSize + 'px', 'important');
       image.style.setProperty('height', imageSize + 'px', 'important');
@@ -380,7 +385,7 @@
     }
     button.addEventListener('click', function () {
       trackOfferClick(product.productId);
-      if (product.variants && product.variants.length > 1 && !pickerOpen) {
+      if (hasVariants && !pickerOpen) {
         pickerOpen = true;
         item.classList.add('cart-upsell__item--expanded');
         item.querySelector('.cart-upsell__options').hidden = false;
@@ -444,6 +449,7 @@
               choice.style.backgroundColor = colorValue;
               choice.title = value;
               if (colorValue === '#dedede') choice.textContent = value.slice(0, 1).toUpperCase();
+              if (selected && config.swatchBorderWidth === 0) choice.textContent = '✓';
             }
             choice.addEventListener('click', function () { selectValue(index, value); });
           }
