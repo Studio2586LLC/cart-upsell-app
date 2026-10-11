@@ -385,10 +385,21 @@
       escapeHtml(hasVariants && !pickerOpen ? config.selectButtonLabel || labels.select : buttonLabel) + '</button>';
 
     var button = item.querySelector('.cart-upsell__btn');
+    if (config.buttonColor && /^#[0-9a-f]{6}$/i.test(config.buttonColor)) {
+      button.style.setProperty('background-color', config.buttonColor, 'important');
+    }
     if (config.buttonTextColor && /^#[0-9a-f]{6}$/i.test(config.buttonTextColor)) {
       button.style.setProperty('color', config.buttonTextColor, 'important');
       button.style.setProperty('-webkit-text-fill-color', config.buttonTextColor, 'important');
     }
+    if (config.buttonBorderRadius !== null && config.buttonBorderRadius !== undefined &&
+        Number.isInteger(config.buttonBorderRadius) && config.buttonBorderRadius >= 0 &&
+        config.buttonBorderRadius <= 60) {
+      button.style.setProperty('border-radius', config.buttonBorderRadius + 'px', 'important');
+    }
+    var options = item.querySelector('.cart-upsell__options');
+    options.addEventListener('pointerdown', function (event) { event.stopPropagation(); });
+    options.addEventListener('click', function (event) { event.stopPropagation(); });
     var image = item.querySelector('.cart-upsell__img');
     var variant = product.variants && product.variants.find(function (candidate) {
       return Number(candidate.id) === product.variantId;
@@ -466,7 +477,11 @@
               if (colorValue === '#dedede') choice.textContent = value.slice(0, 1).toUpperCase();
               if (selected && config.swatchBorderWidth === 0) choice.textContent = '✓';
             }
-            choice.addEventListener('click', function () { selectValue(index, value); });
+            choice.addEventListener('click', function (event) {
+              event.preventDefault();
+              event.stopPropagation();
+              selectValue(index, value);
+            });
           }
           control.appendChild(choice);
         });
