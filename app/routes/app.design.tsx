@@ -219,8 +219,8 @@ export default function Design() {
     color: /^#[0-9a-f]{6}$/i.test(buttonTextColor) ? buttonTextColor : "#fff",
     border: 0,
     padding: "10px 18px",
+    cursor: "pointer",
     borderRadius: buttonBorderRadius === "" ? 40 : Number(buttonBorderRadius),
-    cursor: "default",
   };
 
   const isSaving = fetcher.state !== "idle";
