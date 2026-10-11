@@ -36,6 +36,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       buttonLabel: null,
       imageSize: null,
       itemGap: null,
+      swatchShape: "circle",
+      swatchSize: 28,
+      otherOptionStyle: "boxes",
       maxProducts: 6,
       shuffleProducts: false,
       pinnedProducts: [],
@@ -62,6 +65,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const buttonLabel = settings?.buttonLabel ?? null;
   const imageSize = settings?.imageSize ?? null;
   const itemGap = settings?.itemGap ?? null;
+  const swatchShape = settings?.swatchShape ?? "circle";
+  const swatchSize = settings?.swatchSize ?? 28;
+  const otherOptionStyle = settings?.otherOptionStyle ?? "boxes";
   const maxProducts = settings?.maxProducts ?? 6;
   const shuffleProducts = settings?.shuffleProducts ?? false;
   let excludedProductIds: number[] = [];
@@ -177,6 +183,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     buttonLabel,
     imageSize,
     itemGap,
+    swatchShape,
+    swatchSize,
+    otherOptionStyle,
     maxProducts,
     shuffleProducts,
     pinnedProducts: [],

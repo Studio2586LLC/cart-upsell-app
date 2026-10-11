@@ -59,6 +59,9 @@ model CartUpsellSettings {
   buttonBorderRadius Int?
   imageSize          Int?
   itemGap            Int?
+  swatchShape        String  @default("circle") // "circle" | "square"
+  swatchSize         Int     @default(28)
+  otherOptionStyle   String  @default("boxes") // "boxes" | "dropdown"
 
   updatedAt DateTime @updatedAt
 }

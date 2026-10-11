@@ -9,6 +9,7 @@ import {
   InlineStack,
   Text,
   TextField,
+  Select,
   Button,
   Box,
 } from "@shopify/polaris";
@@ -31,6 +32,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     buttonBorderRadius: settings?.buttonBorderRadius?.toString() ?? "",
     imageSize: settings?.imageSize?.toString() ?? "",
     itemGap: settings?.itemGap?.toString() ?? "",
+    swatchShape: settings?.swatchShape ?? "circle",
+    swatchSize: (settings?.swatchSize ?? 28).toString(),
+    otherOptionStyle: settings?.otherOptionStyle ?? "boxes",
   };
 };
 
@@ -58,7 +62,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   };
   const imageSize = parseSize("imageSize", 40, 120);
   const itemGap = parseSize("itemGap", 0, 40);
+  const swatchShape = formData.get("swatchShape")?.toString();
+  const swatchSize = parseSize("swatchSize", 16, 48);
+  const otherOptionStyle = formData.get("otherOptionStyle")?.toString();
   if (Number.isNaN(imageSize) || Number.isNaN(itemGap) ||
+      swatchSize === null || Number.isNaN(swatchSize) ||
+      !["circle", "square"].includes(swatchShape ?? "") ||
+      !["boxes", "dropdown"].includes(otherOptionStyle ?? "") ||
       [buttonColor, buttonTextColor].some((color) => color !== null &&
         !/^#[0-9a-f]{6}$/i.test(color)) ||
       (buttonBorderRadius !== null &&
@@ -77,6 +87,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       buttonBorderRadius,
       imageSize,
       itemGap,
+      swatchShape: swatchShape!,
+      swatchSize,
+      otherOptionStyle: otherOptionStyle!,
     },
     update: {
       headingText,
@@ -86,6 +99,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       buttonBorderRadius,
       imageSize,
       itemGap,
+      swatchShape: swatchShape!,
+      swatchSize,
+      otherOptionStyle: otherOptionStyle!,
     },
   });
 
@@ -150,6 +166,9 @@ export default function Design() {
   );
   const [imageSize, setImageSize] = useState(data.imageSize);
   const [itemGap, setItemGap] = useState(data.itemGap);
+  const [swatchShape, setSwatchShape] = useState(data.swatchShape);
+  const [swatchSize, setSwatchSize] = useState(data.swatchSize);
+  const [otherOptionStyle, setOtherOptionStyle] = useState(data.otherOptionStyle);
 
   const isSaving = fetcher.state !== "idle";
 
@@ -164,7 +183,7 @@ export default function Design() {
   const handleSave = () => {
     fetcher.submit(
       { headingText, buttonLabel, buttonColor, buttonTextColor,
-        buttonBorderRadius, imageSize, itemGap },
+        buttonBorderRadius, imageSize, itemGap, swatchShape, swatchSize, otherOptionStyle },
       { method: "POST" },
     );
   };
@@ -241,6 +260,24 @@ export default function Design() {
                   <TextField label="Space between products (px)" type="number"
                     value={itemGap} onChange={setItemGap} placeholder="12"
                     autoComplete="off" helpText="0–40 px; blank uses the default" />
+                </BlockStack>
+              </Card>
+
+              <Card>
+                <BlockStack gap="400">
+                  <Text as="h2" variant="headingMd">Variant choices</Text>
+                  <Text as="p" tone="subdued">Color options appear as swatches. Other options use the style selected below.</Text>
+                  <Select label="Swatch shape" options={[
+                    { label: "Circle", value: "circle" },
+                    { label: "Square", value: "square" },
+                  ]} value={swatchShape} onChange={setSwatchShape} />
+                  <TextField label="Swatch size (px)" type="number"
+                    value={swatchSize} onChange={setSwatchSize} autoComplete="off"
+                    helpText="16–48 px" />
+                  <Select label="Other option style" options={[
+                    { label: "Selectable text boxes", value: "boxes" },
+                    { label: "Dropdown", value: "dropdown" },
+                  ]} value={otherOptionStyle} onChange={setOtherOptionStyle} />
                 </BlockStack>
               </Card>
 

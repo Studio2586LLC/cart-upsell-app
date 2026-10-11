@@ -2,6 +2,7 @@
   "cart_upsell": {
     "heading": "Complete your order",
     "add": "Add",
+    "select": "Select",
     "previous": "Previous",
     "next": "Next"
   }

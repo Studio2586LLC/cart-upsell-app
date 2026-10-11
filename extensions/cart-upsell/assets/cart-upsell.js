@@ -29,6 +29,7 @@
     return {
       heading: values.cartUpsellHeading || 'Complete your order',
       add: values.cartUpsellAdd || 'Add',
+      select: values.cartUpsellSelect || 'Select',
       previous: values.cartUpsellPrevious || 'Previous',
       next: values.cartUpsellNext || 'Next',
     };
@@ -187,6 +188,11 @@
         var imageSize = Number.isInteger(config.imageSize) && config.imageSize >= 40 &&
           config.imageSize <= 120 ? config.imageSize : 64;
         root.style.setProperty('--cart-upsell-image-size', imageSize + 'px');
+        var swatchSize = Number.isInteger(config.swatchSize) && config.swatchSize >= 16 &&
+          config.swatchSize <= 48 ? config.swatchSize : 28;
+        root.style.setProperty('--cart-upsell-swatch-size', swatchSize + 'px');
+        root.style.setProperty('--cart-upsell-swatch-radius',
+          config.swatchShape === 'square' ? '4px' : '50%');
         if (config.itemGap !== null && config.itemGap !== undefined) {
           root.style.setProperty('--cart-upsell-item-gap', config.itemGap + 'px');
         }
@@ -204,7 +210,8 @@
           } catch (e) {
             formatter = null;
           }
-          track.appendChild(renderItem(product, formatter, config.buttonLabel || labels.add, imageSize));
+          track.appendChild(renderItem(product, formatter, config.buttonLabel || labels.add,
+            imageSize, config, labels));
         });
 
         if (isSlider) {
@@ -261,9 +268,14 @@
           handle: product.handle,
           url: window.Shopify.routes.root + 'products/' + encodeURIComponent(product.handle) +
             '?variant=' + variant.id,
-          image: product.image,
+          image: variant.featured_image && variant.featured_image.src || product.image,
           price: Number(variant.price) / 100,
           currency: cart.currency,
+          variants: variants,
+          options: (storefrontProduct.options || []).map(function (option) {
+            return typeof option === 'string' ? option : option.name;
+          }),
+          fallbackImage: product.image,
         };
       });
     })).then(function (hydrated) {
@@ -323,7 +335,7 @@
     update();
   }
 
-  function renderItem(product, formatter, buttonLabel, imageSize) {
+  function renderItem(product, formatter, buttonLabel, imageSize, config, labels) {
     var item = document.createElement('div');
     item.className = 'cart-upsell__item';
     item.dataset.cartUpsellProductId = String(product.productId);
@@ -341,12 +353,17 @@
       '<div class="cart-upsell__info">' +
       '<a href="' + escapeAttribute(product.url) + '" class="cart-upsell__name">' + escapeHtml(product.title) + '</a>' +
       '<span class="cart-upsell__price">' + escapeHtml(price) + '</span>' +
+      '<div class="cart-upsell__options" hidden></div>' +
       '</div>' +
       '<button type="button" class="cart-upsell__btn" data-variant-id="' + product.variantId + '">' +
-      escapeHtml(buttonLabel) + '</button>';
+      escapeHtml(product.variants && product.variants.length > 1 ? labels.select : buttonLabel) + '</button>';
 
     var button = item.querySelector('.cart-upsell__btn');
     var image = item.querySelector('.cart-upsell__img');
+    var variant = product.variants && product.variants.find(function (candidate) {
+      return Number(candidate.id) === product.variantId;
+    });
+    var pickerOpen = false;
     if (image) {
       image.style.setProperty('width', imageSize + 'px', 'important');
       image.style.setProperty('height', imageSize + 'px', 'important');
@@ -354,8 +371,107 @@
     }
     button.addEventListener('click', function () {
       trackOfferClick(product.productId);
+      if (product.variants && product.variants.length > 1 && !pickerOpen) {
+        pickerOpen = true;
+        item.classList.add('cart-upsell__item--expanded');
+        item.querySelector('.cart-upsell__options').hidden = false;
+        button.textContent = buttonLabel;
+        renderOptions();
+        return;
+      }
       addToCart(button, product);
     });
+
+    function renderOptions() {
+      var holder = item.querySelector('.cart-upsell__options');
+      holder.replaceChildren();
+      var optionNames = product.options || [];
+      optionNames.forEach(function (name, index) {
+        var values = [];
+        product.variants.forEach(function (candidate) {
+          var value = candidate['option' + (index + 1)];
+          if (value && values.indexOf(value) === -1) values.push(value);
+        });
+        if (values.length < 2) return;
+
+        var group = document.createElement('div');
+        group.className = 'cart-upsell__option';
+        var caption = document.createElement('span');
+        caption.className = 'cart-upsell__option-label';
+        caption.textContent = name;
+        group.appendChild(caption);
+        var color = /^(color|colour|couleur|farbe|колір|цвет|coloris)$/i.test(name);
+        var dropdown = !color && config.otherOptionStyle === 'dropdown';
+        var control = document.createElement(dropdown ? 'select' : 'div');
+        control.className = dropdown ? 'cart-upsell__select' : 'cart-upsell__choices';
+        if (dropdown) control.setAttribute('aria-label', name);
+
+        values.forEach(function (value) {
+          var available = product.variants.some(function (candidate) {
+            return candidate.available && candidate['option' + (index + 1)] === value;
+          });
+          var selected = variant['option' + (index + 1)] === value;
+          var choice = document.createElement(dropdown ? 'option' : 'button');
+          choice.value = value;
+          choice.textContent = dropdown ? value : (color ? '' : value);
+          choice.disabled = !available;
+          if (dropdown) {
+            choice.selected = selected;
+          } else {
+            choice.type = 'button';
+            choice.className = color ? 'cart-upsell__swatch' : 'cart-upsell__text-choice';
+            choice.classList.toggle('is-selected', selected);
+            choice.setAttribute('aria-label', name + ': ' + value);
+            choice.setAttribute('aria-pressed', String(selected));
+            if (color) {
+              var commonColors = {
+                burgundy: '#800020', navy: '#000080', cream: '#fffdd0',
+                ivory: '#fffff0', charcoal: '#36454f', tan: '#d2b48c',
+                blush: '#de9b9b', rose: '#e8a0a8', gold: '#d4af37',
+                silver: '#c0c0c0', grey: '#808080', gray: '#808080',
+              };
+              var colorValue = commonColors[value.toLowerCase()] ||
+                (CSS.supports('color', value) ? value : '#dedede');
+              choice.style.backgroundColor = colorValue;
+              choice.title = value;
+              if (colorValue === '#dedede') choice.textContent = value.slice(0, 1).toUpperCase();
+            }
+            choice.addEventListener('click', function () { selectValue(index, value); });
+          }
+          control.appendChild(choice);
+        });
+        if (dropdown) control.addEventListener('change', function () {
+          selectValue(index, control.value);
+        });
+        group.appendChild(control);
+        holder.appendChild(group);
+      });
+    }
+
+    function selectValue(index, value) {
+      var matches = product.variants.filter(function (candidate) {
+        return candidate.available && candidate['option' + (index + 1)] === value;
+      });
+      var next = matches.find(function (candidate) {
+        return (product.options || []).every(function (_, otherIndex) {
+          return otherIndex === index || candidate['option' + (otherIndex + 1)] ===
+            variant['option' + (otherIndex + 1)];
+        });
+      }) || matches[0];
+      if (!next) return;
+      variant = next;
+      product.variantId = Number(next.id);
+      product.price = Number(next.price) / 100;
+      product.image = next.featured_image && next.featured_image.src || product.fallbackImage;
+      product.url = window.Shopify.routes.root + 'products/' + encodeURIComponent(product.handle) +
+        '?variant=' + next.id;
+      item.querySelector('.cart-upsell__price').textContent = formatter
+        ? formatter.format(product.price) : String(product.price);
+      item.querySelectorAll('a').forEach(function (link) { link.href = product.url; });
+      if (image && product.image) image.src = product.image;
+      button.dataset.variantId = String(product.variantId);
+      renderOptions();
+    }
 
     item.querySelectorAll('a').forEach(function (link) {
       link.addEventListener('click', function () {
