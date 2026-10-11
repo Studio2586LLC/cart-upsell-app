@@ -20,6 +20,44 @@
   align-self: start;
 }
 
+.settingsSectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.settingsSectionHeading::-webkit-details-marker {
+  display: none;
+}
+
+.settingsSectionHeading::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+.settingsSection[open] .settingsSectionHeading::after {
+  transform: rotate(225deg);
+}
+
+.settingsSectionHeading:focus-visible {
+  outline: 2px solid var(--p-color-border-focus, #005bd3);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+.settingsSectionBody {
+  padding-top: 16px;
+}
+
 .colorPreview {
   flex: none;
   margin-top: 24px;

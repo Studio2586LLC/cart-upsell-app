@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { useFetcher, useLoaderData } from "@remix-run/react";
 import {
@@ -39,6 +39,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     swatchBorderWidth: (settings?.swatchBorderWidth ?? 1).toString(),
     swatchBorderColor: settings?.swatchBorderColor ?? "",
     selectedOutlineColor: settings?.selectedOutlineColor ?? "",
+    selectedOutlineWidth: settings?.selectedOutlineWidth?.toString() ?? "",
     otherOptionStyle: settings?.otherOptionStyle ?? "boxes",
     variantLayout: settings?.variantLayout ?? "select",
   };
@@ -74,6 +75,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const swatchBorderWidth = parseSize("swatchBorderWidth", 0, 6);
   const swatchBorderColor = formData.get("swatchBorderColor")?.toString().trim() || null;
   const selectedOutlineColor = formData.get("selectedOutlineColor")?.toString().trim() || null;
+  const selectedOutlineWidth = parseSize("selectedOutlineWidth", 0, 6);
   const otherOptionStyle = formData.get("otherOptionStyle")?.toString();
   const variantLayout = formData.get("variantLayout")?.toString();
   if (Number.isNaN(imageSize) || Number.isNaN(itemGap) ||
@@ -81,6 +83,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       swatchBorderWidth === null || Number.isNaN(swatchBorderWidth) ||
       (swatchBorderColor !== null && !/^#[0-9a-f]{6}$/i.test(swatchBorderColor)) ||
       (selectedOutlineColor !== null && !/^#[0-9a-f]{6}$/i.test(selectedOutlineColor)) ||
+      Number.isNaN(selectedOutlineWidth) ||
       !["circle", "square"].includes(swatchShape ?? "") ||
       !["boxes", "dropdown"].includes(otherOptionStyle ?? "") ||
       !["select", "regular"].includes(variantLayout ?? "") ||
@@ -108,6 +111,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       swatchBorderWidth,
       swatchBorderColor,
       selectedOutlineColor,
+      selectedOutlineWidth,
       otherOptionStyle: otherOptionStyle!,
       variantLayout: variantLayout!,
     },
@@ -125,6 +129,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       swatchBorderWidth,
       swatchBorderColor,
       selectedOutlineColor,
+      selectedOutlineWidth,
       otherOptionStyle: otherOptionStyle!,
       variantLayout: variantLayout!,
     },
@@ -132,6 +137,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   return { ok: true };
 };
+
+function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+
+  return (
+    <Card>
+      <details className={styles.settingsSection} open={open}
+        onToggle={(event) => setOpen(event.currentTarget.open)}>
+        <summary className={styles.settingsSectionHeading}>
+          <Text as="h2" variant="headingMd">{title}</Text>
+        </summary>
+        <div className={styles.settingsSectionBody}>{children}</div>
+      </details>
+    </Card>
+  );
+}
 
 function ColorField({
   label,
@@ -208,6 +229,7 @@ export default function Design() {
   const [swatchBorderWidth, setSwatchBorderWidth] = useState(data.swatchBorderWidth);
   const [swatchBorderColor, setSwatchBorderColor] = useState(data.swatchBorderColor);
   const [selectedOutlineColor, setSelectedOutlineColor] = useState(data.selectedOutlineColor);
+  const [selectedOutlineWidth, setSelectedOutlineWidth] = useState(data.selectedOutlineWidth);
   const [otherOptionStyle, setOtherOptionStyle] = useState(data.otherOptionStyle);
   const [variantLayout, setVariantLayout] = useState(data.variantLayout);
   const [previewPickerOpen, setPreviewPickerOpen] = useState(false);
@@ -223,6 +245,10 @@ export default function Design() {
     ? swatchBorderColor : "rgba(0, 0, 0, 0.2)";
   const previewSelectedOutlineColor = /^#[0-9a-f]{6}$/i.test(selectedOutlineColor)
     ? selectedOutlineColor : "";
+  const previewSelectedOutlineWidth = selectedOutlineWidth !== "" &&
+    Number.isInteger(Number(selectedOutlineWidth)) && Number(selectedOutlineWidth) >= 0 &&
+    Number(selectedOutlineWidth) <= 6 ? Number(selectedOutlineWidth) : null;
+  const previewSwatchOutlineWidth = previewSelectedOutlineWidth ?? previewBorderWidth;
   const previewButtonStyle = {
     background: /^#[0-9a-f]{6}$/i.test(buttonColor) ? buttonColor : "#1a1a1a",
     color: /^#[0-9a-f]{6}$/i.test(buttonTextColor) ? buttonTextColor : "#fff",
@@ -246,7 +272,7 @@ export default function Design() {
     fetcher.submit(
       { headingText, buttonLabel, selectButtonLabel, buttonColor, buttonTextColor,
         buttonBorderRadius, imageSize, itemGap, swatchShape, swatchSize,
-        swatchBorderWidth, swatchBorderColor, selectedOutlineColor,
+        swatchBorderWidth, swatchBorderColor, selectedOutlineColor, selectedOutlineWidth,
         otherOptionStyle, variantLayout },
       { method: "POST" },
     );
@@ -259,11 +285,8 @@ export default function Design() {
         <div className={styles.layout}>
           <div className={styles.settings}>
             <BlockStack gap="500">
-              <Card>
+              <SettingsSection title="Copy">
                 <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">
-                    Copy
-                  </Text>
                   <TextField
                     label="Heading"
                     value={headingText}
@@ -289,13 +312,10 @@ export default function Design() {
                     helpText="Leave blank for the translated default"
                   />
                 </BlockStack>
-              </Card>
+              </SettingsSection>
 
-              <Card>
+              <SettingsSection title="Button">
                 <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">
-                    Button
-                  </Text>
                   <Text as="p" tone="subdued">
                     By default the button matches your theme's own colors and
                     corner radius. Set any of these to override it.
@@ -321,11 +341,10 @@ export default function Design() {
                     autoComplete="off"
                   />
                 </BlockStack>
-              </Card>
+              </SettingsSection>
 
-              <Card>
+              <SettingsSection title="Layout details">
                 <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">Layout details</Text>
                   <TextField label="Product image size (px)" type="number"
                     value={imageSize} onChange={setImageSize} placeholder="64"
                     autoComplete="off" helpText="40–120 px; blank uses the default" />
@@ -333,11 +352,10 @@ export default function Design() {
                     value={itemGap} onChange={setItemGap} placeholder="12"
                     autoComplete="off" helpText="0–40 px; blank uses the default" />
                 </BlockStack>
-              </Card>
+              </SettingsSection>
 
-              <Card>
+              <SettingsSection title="Variant choices">
                 <BlockStack gap="400">
-                  <Text as="h2" variant="headingMd">Variant choices</Text>
                   <Text as="p" tone="subdued">Color options appear as swatches. Other options use the style selected below.</Text>
                   <Select label="Variant layout" options={[
                     { label: "Select to show", value: "select" },
@@ -362,12 +380,15 @@ export default function Design() {
                   <ColorField label="Selected outline color" value={selectedOutlineColor}
                     onChange={setSelectedOutlineColor} placeholder="#333333"
                     helpText="Leave blank to use the current outline colors" />
+                  <TextField label="Selected outline thickness (px)" type="number"
+                    value={selectedOutlineWidth} onChange={setSelectedOutlineWidth}
+                    autoComplete="off" helpText="0–6 px; blank uses the existing thickness" />
                   <Select label="Other option style" options={[
                     { label: "Selectable text boxes", value: "boxes" },
                     { label: "Dropdown", value: "dropdown" },
                   ]} value={otherOptionStyle} onChange={setOtherOptionStyle} />
                 </BlockStack>
-              </Card>
+              </SettingsSection>
 
               <InlineStack>
                 <Button
@@ -412,12 +433,12 @@ export default function Design() {
                                     boxSizing: "border-box", background: color,
                                     border: `1px solid ${previewBorderColor}`,
                                     borderRadius: swatchShape === "square" ? 4 : "50%",
-                                    outline: previewColor === name && previewBorderWidth > 0
-                                      ? `${previewBorderWidth}px solid ${previewSelectedOutlineColor || swatchBorderColor || "#333"}` : "none",
+                                    outline: previewColor === name && previewSwatchOutlineWidth > 0
+                                      ? `${previewSwatchOutlineWidth}px solid ${previewSelectedOutlineColor || swatchBorderColor || "#333"}` : "none",
                                     outlineOffset: 2,
                                     color: "#fff", textShadow: "0 0 2px #000, 0 0 2px #000",
                                     fontSize: 14, fontWeight: 700 }}>
-                                  {previewColor === name && previewBorderWidth === 0 ? "✓" : null}
+                                  {previewColor === name && previewSwatchOutlineWidth === 0 ? "✓" : null}
                                 </button>
                               ))}
                           </div>
@@ -436,7 +457,7 @@ export default function Design() {
                                   style={{ border: "1px solid currentColor", borderRadius: 3,
                                     padding: "4px 8px", background: "transparent", cursor: "pointer",
                                     outline: previewSize === size
-                                      ? `2px solid ${previewSelectedOutlineColor || "currentColor"}` : "none",
+                                      ? `${previewSelectedOutlineWidth ?? 2}px solid ${previewSelectedOutlineColor || "currentColor"}` : "none",
                                     outlineOffset: 2 }}>{size}</button>
                               ))}
                             </div>

@@ -223,12 +223,14 @@
 
 .cart-upsell__swatch.is-selected,
 .cart-upsell__text-choice.is-selected {
-  outline: 2px solid var(--cart-upsell-selected-outline-color, currentColor);
+  outline: var(--cart-upsell-selected-outline-width, 2px) solid
+    var(--cart-upsell-selected-outline-color, currentColor);
   outline-offset: 2px;
 }
 
 .cart-upsell__swatch.is-selected {
-  outline-width: var(--cart-upsell-swatch-border-width, 1px);
+  outline-width: var(--cart-upsell-selected-outline-width,
+    var(--cart-upsell-swatch-border-width, 1px));
   outline-color: var(--cart-upsell-selected-outline-color,
     var(--cart-upsell-swatch-border-color, currentColor));
 }

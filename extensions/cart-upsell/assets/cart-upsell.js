@@ -212,6 +212,12 @@
         } else {
           root.style.removeProperty('--cart-upsell-selected-outline-color');
         }
+        if (Number.isInteger(config.selectedOutlineWidth) &&
+            config.selectedOutlineWidth >= 0 && config.selectedOutlineWidth <= 6) {
+          root.style.setProperty('--cart-upsell-selected-outline-width', config.selectedOutlineWidth + 'px');
+        } else {
+          root.style.removeProperty('--cart-upsell-selected-outline-width');
+        }
         root.style.setProperty('--cart-upsell-swatch-radius',
           config.swatchShape === 'square' ? '4px' : '50%');
         if (config.itemGap !== null && config.itemGap !== undefined) {
@@ -480,7 +486,9 @@
               choice.style.backgroundColor = colorValue;
               choice.title = value;
               if (colorValue === '#dedede') choice.textContent = value.slice(0, 1).toUpperCase();
-              if (selected && config.swatchBorderWidth === 0) choice.textContent = '✓';
+              var selectedOutlineWidth = Number.isInteger(config.selectedOutlineWidth)
+                ? config.selectedOutlineWidth : config.swatchBorderWidth;
+              if (selected && selectedOutlineWidth === 0) choice.textContent = '✓';
             }
             choice.addEventListener('click', function (event) {
               event.preventDefault();
