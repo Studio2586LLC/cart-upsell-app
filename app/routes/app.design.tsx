@@ -3,7 +3,6 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { useFetcher, useLoaderData } from "@remix-run/react";
 import {
   Page,
-  Layout,
   Card,
   BlockStack,
   InlineStack,
@@ -16,6 +15,7 @@ import {
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import styles from "../styles/design.module.css";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -132,7 +132,7 @@ function ColorField({
   helpText?: string;
 }) {
   return (
-    <InlineStack gap="200" blockAlign="end" wrap={false}>
+    <InlineStack gap="200" blockAlign="start" wrap={false}>
       <div style={{ flexGrow: 1 }}>
         <TextField
           label={label}
@@ -143,21 +143,23 @@ function ColorField({
           helpText={helpText}
         />
       </div>
-      <Box
-        borderRadius="200"
-        borderWidth="025"
-        borderColor="border"
-        overflowX="hidden"
-        overflowY="hidden"
-      >
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            background: value || "transparent",
-          }}
-        />
-      </Box>
+      <div className={styles.colorPreview}>
+        <Box
+          borderRadius="200"
+          borderWidth="025"
+          borderColor="border"
+          overflowX="hidden"
+          overflowY="hidden"
+        >
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              background: value || "transparent",
+            }}
+          />
+        </Box>
+      </div>
     </InlineStack>
   );
 }
@@ -224,8 +226,8 @@ export default function Design() {
     <Page fullWidth>
       <TitleBar title="Design" />
       <BlockStack gap="500">
-        <Layout>
-          <Layout.Section variant="oneHalf">
+        <div className={styles.layout}>
+          <div className={styles.settings}>
             <BlockStack gap="500">
               <Card>
                 <BlockStack gap="400">
@@ -329,9 +331,9 @@ export default function Design() {
                 </Button>
               </InlineStack>
             </BlockStack>
-          </Layout.Section>
+          </div>
 
-          <Layout.Section variant="oneHalf">
+          <aside className={styles.preview}>
             <BlockStack gap="500">
               <Card>
                 <BlockStack gap="300">
@@ -345,7 +347,7 @@ export default function Design() {
                     </div>
                     <div style={{ display: "flex", flexDirection: "column",
                       gap: itemGap === "" ? 12 : Number(itemGap) }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 12 }}>
                         <div style={{ width: imageSize === "" ? 64 : Number(imageSize),
                           height: imageSize === "" ? 64 : Number(imageSize),
                           background: "#eee", borderRadius: 4, flexShrink: 0 }} />
@@ -353,7 +355,7 @@ export default function Design() {
                           <div>Sample product</div>
                           <div style={{ opacity: 0.7 }}>$24.00</div>
                           <div style={{ marginTop: 8, fontSize: 10, letterSpacing: "0.06em", opacity: 0.6 }}>COLOR</div>
-                          <div style={{ display: "flex", gap: 7, marginTop: 5 }}>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 5 }}>
                             {([ ["Burgundy", "#800020"], ["Blue", "#2563eb"], ["Gray", "#808080"] ] as const)
                               .map(([name, color]) => (
                                 <button key={name} type="button" title={name} aria-label={`Color: ${name}`}
@@ -388,7 +390,7 @@ export default function Design() {
                         </div>
                         <button type="button" style={previewButtonStyle}>{buttonLabel || "Add"}</button>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
                         <div style={{ width: imageSize === "" ? 64 : Number(imageSize),
                           height: imageSize === "" ? 64 : Number(imageSize),
                           background: "#eee", borderRadius: 4, flexShrink: 0 }} />
@@ -401,8 +403,8 @@ export default function Design() {
                 </BlockStack>
               </Card>
             </BlockStack>
-          </Layout.Section>
-        </Layout>
+          </aside>
+        </div>
       </BlockStack>
     </Page>
   );

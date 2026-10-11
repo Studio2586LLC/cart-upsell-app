@@ -1,0 +1,35 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+  width: 100%;
+  max-width: 1024px;
+  margin-inline: auto;
+}
+
+.settings,
+.preview {
+  min-width: 0;
+}
+
+.preview {
+  position: sticky;
+  top: 16px;
+  align-self: start;
+}
+
+.colorPreview {
+  flex: none;
+  padding-top: 24px;
+}
+
+@media (max-width: 800px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .preview {
+    position: static;
+  }
+}
