@@ -213,7 +213,8 @@
   box-sizing: border-box;
   width: var(--cart-upsell-swatch-size, 28px);
   height: var(--cart-upsell-swatch-size, 28px);
-  border: 1px solid var(--cart-upsell-swatch-border-color, rgba(0, 0, 0, 0.2));
+  border: var(--cart-upsell-swatch-border-width, 1px) solid
+    var(--cart-upsell-swatch-border-color, rgba(0, 0, 0, 0.2));
   border-radius: var(--cart-upsell-swatch-radius, 50%);
   padding: 0;
   color: #fff;
@@ -229,10 +230,8 @@
 }
 
 .cart-upsell__swatch.is-selected {
-  outline-width: var(--cart-upsell-selected-outline-width,
-    var(--cart-upsell-swatch-border-width, 1px));
-  outline-color: var(--cart-upsell-selected-outline-color,
-    var(--cart-upsell-swatch-border-color, currentColor));
+  outline-width: var(--cart-upsell-selected-outline-width, 2px);
+  outline-color: var(--cart-upsell-selected-outline-color, #1a1a1a);
 }
 
 .cart-upsell__swatch:disabled,

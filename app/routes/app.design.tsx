@@ -310,7 +310,7 @@ export default function Design() {
   const previewSelectedOutlineWidth = selectedOutlineWidth !== "" &&
     Number.isInteger(Number(selectedOutlineWidth)) && Number(selectedOutlineWidth) >= 0 &&
     Number(selectedOutlineWidth) <= 6 ? Number(selectedOutlineWidth) : null;
-  const previewSwatchOutlineWidth = previewSelectedOutlineWidth ?? previewBorderWidth;
+  const previewSwatchOutlineWidth = previewSelectedOutlineWidth ?? 2;
   const previewButtonStyle = {
     background: /^#[0-9a-f]{6}$/i.test(buttonColor) ? buttonColor : "#1a1a1a",
     color: /^#[0-9a-f]{6}$/i.test(buttonTextColor) ? buttonTextColor : "#fff",
@@ -529,10 +529,10 @@ export default function Design() {
                                   style={{ width: previewSwatchSize, height: previewSwatchSize,
                                     flexShrink: 0, padding: 0, cursor: "pointer",
                                     boxSizing: "border-box", background: color,
-                                    border: `1px solid ${previewBorderColor}`,
+                                    border: `${previewBorderWidth}px solid ${previewBorderColor}`,
                                     borderRadius: swatchShape === "square" ? 4 : "50%",
                                     outline: previewColor === name && previewSwatchOutlineWidth > 0
-                                      ? `${previewSwatchOutlineWidth}px solid ${previewSelectedOutlineColor || swatchBorderColor || "#333"}` : "none",
+                                      ? `${previewSwatchOutlineWidth}px solid ${previewSelectedOutlineColor || "#1a1a1a"}` : "none",
                                     outlineOffset: 2,
                                     color: "#fff", textShadow: "0 0 2px #000, 0 0 2px #000",
                                     fontSize: 14, fontWeight: 700 }}>
