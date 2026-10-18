@@ -41,6 +41,7 @@ function toFormValues(design: WidgetDesign) {
     selectedOutlineWidth: design.selectedOutlineWidth?.toString() ?? "",
     otherOptionStyle: design.otherOptionStyle,
     variantLayout: design.variantLayout,
+    maxProducts: design.maxProducts.toString(),
   };
 }
 
@@ -91,6 +92,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const selectedOutlineWidth = parseSize("selectedOutlineWidth", 0, 6);
   const otherOptionStyle = formData.get("otherOptionStyle")?.toString();
   const variantLayout = formData.get("variantLayout")?.toString();
+  const maxProducts = Number(formData.get("maxProducts"));
+  if (!Number.isInteger(maxProducts) || maxProducts < 1 ||
+      maxProducts > (widget === "product" ? 10 : 20)) {
+    return { ok: false, error: `Choose between 1 and ${widget === "product" ? 10 : 20} products.`, widget };
+  }
   if (Number.isNaN(imageSize) || Number.isNaN(itemGap) ||
       swatchSize === null || Number.isNaN(swatchSize) ||
       swatchBorderWidth === null || Number.isNaN(swatchBorderWidth) ||
@@ -124,6 +130,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     selectedOutlineWidth,
     otherOptionStyle: otherOptionStyle!,
     variantLayout: variantLayout!,
+    maxProducts,
   };
 
   if (widget === "product") {
@@ -155,6 +162,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       selectedOutlineWidth,
       otherOptionStyle: otherOptionStyle!,
       variantLayout: variantLayout!,
+      maxProducts,
     },
     update: {
       headingText,
@@ -173,6 +181,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       selectedOutlineWidth,
       otherOptionStyle: otherOptionStyle!,
       variantLayout: variantLayout!,
+      maxProducts,
     },
   });
 
@@ -260,7 +269,7 @@ export default function Design() {
     headingText, buttonLabel, selectButtonLabel, buttonColor, buttonTextColor,
     buttonBorderRadius, imageSize, itemGap, swatchShape, swatchSize,
     swatchBorderWidth, swatchBorderColor, selectedOutlineColor,
-    selectedOutlineWidth, otherOptionStyle, variantLayout,
+    selectedOutlineWidth, otherOptionStyle, variantLayout, maxProducts,
   } = design;
   const setField = (field: keyof typeof design, value: string) => {
     setDesigns((previous) => ({
@@ -284,6 +293,7 @@ export default function Design() {
   const setSelectedOutlineWidth = (value: string) => setField("selectedOutlineWidth", value);
   const setOtherOptionStyle = (value: string) => setField("otherOptionStyle", value);
   const setVariantLayout = (value: string) => setField("variantLayout", value);
+  const setMaxProducts = (value: string) => setField("maxProducts", value);
   const [previewPickerOpen, setPreviewPickerOpen] = useState(false);
   const [previewColor, setPreviewColor] = useState("Burgundy");
   const [previewSize, setPreviewSize] = useState("Small");
@@ -416,6 +426,10 @@ export default function Design() {
 
               <SettingsSection title="Layout details">
                 <BlockStack gap="400">
+                  <TextField label="Maximum products shown" type="number"
+                    value={maxProducts} onChange={setMaxProducts} min={1}
+                    max={activeWidget === "product" ? 10 : 20} autoComplete="off"
+                    helpText={activeWidget === "product" ? "Show up to 10 complementary products" : "Show up to 20 cart products"} />
                   <TextField label="Product image size (px)" type="number"
                     value={imageSize} onChange={setImageSize} placeholder="64"
                     autoComplete="off" helpText="40–120 px; blank uses the default" />
@@ -483,6 +497,10 @@ export default function Design() {
                   <Text as="p" tone="subdued">
                     Illustrative preview. Theme colors and fonts are inherited on the storefront.
                   </Text>
+                  <Text as="p" tone="subdued">
+                    {Number(maxProducts) === 1 ? "Shows one product." :
+                      `Shows up to ${maxProducts || (activeWidget === "product" ? "10" : "20")} products; two samples appear below.`}
+                  </Text>
                   <div style={{ border: "1px solid #ddd", padding: 16, borderRadius: 8 }}>
                     {activeWidget === "product" && <div className={styles.productContext}>
                       <ProductThumbnail size={52} />
@@ -549,13 +567,13 @@ export default function Design() {
                           {showPreviewOptions ? buttonLabel || "Add" : selectButtonLabel || "Select"}
                         </button>
                       </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
+                      {Number(maxProducts) !== 1 && <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
                         <ProductThumbnail size={imageSize === "" ? 64 : Number(imageSize)} />
                         <div style={{ flex: 1, fontSize: 13 }}>
                           {activeWidget === "cart" ? "Single variant product" : "Care kit"}<br />
                           <span style={{ opacity: 0.7 }}>$18.00</span></div>
                         <button type="button" style={previewButtonStyle}>{buttonLabel || "Add"}</button>
-                      </div>
+                      </div>}
                     </div>
                   </div>
                 </BlockStack>

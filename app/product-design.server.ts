@@ -15,6 +15,7 @@ export type WidgetDesign = {
   selectedOutlineWidth: number | null;
   otherOptionStyle: string;
   variantLayout: string;
+  maxProducts: number;
 };
 
 export const defaultProductDesign: WidgetDesign = {
@@ -34,6 +35,7 @@ export const defaultProductDesign: WidgetDesign = {
   selectedOutlineWidth: null,
   otherOptionStyle: "boxes",
   variantLayout: "select",
+  maxProducts: 6,
 };
 
 export function parseProductDesign(raw: string | null | undefined): WidgetDesign {

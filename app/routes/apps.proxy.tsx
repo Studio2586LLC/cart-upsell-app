@@ -86,7 +86,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const selectedOutlineWidth = design?.selectedOutlineWidth ?? null;
   const otherOptionStyle = design?.otherOptionStyle ?? "boxes";
   const variantLayout = design?.variantLayout ?? "select";
-  const maxProducts = settings?.maxProducts ?? 6;
+  const maxProducts = isProductWidget ? design?.maxProducts ?? 6 : settings?.maxProducts ?? 6;
   const shuffleProducts = settings?.shuffleProducts ?? false;
   let excludedProductIds: number[] = [];
   try {
