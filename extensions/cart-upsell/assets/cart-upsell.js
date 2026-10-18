@@ -5,10 +5,7 @@
   var MAX_ITEMS = 20;
   var checkScheduled = false;
   var refreshScheduled = false;
-  var lastImpressionKey = '';
-  var impressedForExposure = {};
-  var clickedForExposure = {};
-  var activeImpressionObserver = null;
+  var trackingByRoot = new WeakMap();
   var productCache = {};
   var shuffleSeed = Math.random();
 
@@ -102,33 +99,85 @@
   function populate(root) {
     var requestId = Number(root.dataset.cartUpsellRequest || 0) + 1;
     root.dataset.cartUpsellRequest = String(requestId);
+    var productPageId = root.dataset.cartUpsellProductId;
+    var isProductPage = root.dataset.cartUpsellMode === 'product';
+    if (isProductPage && !/^\d+$/.test(productPageId || '')) {
+      root.hidden = true;
+      return;
+    }
 
+    var cartRequest = fetch(window.Shopify.routes.root + 'cart.js').then(function (r) {
+        if (!r.ok) throw new Error('Cart unavailable');
+        return r.json();
+      });
+    var settingsRequest = (isProductPage ? Promise.resolve(null) : cartRequest)
+      .then(function (cart) {
+        var url = window.Shopify.routes.root + 'apps/cart-upsell';
+        if (isProductPage) url += '?widget=product';
+        if (cart && cart.items) {
+          var ids = cart.items.map(function (item) { return item.product_id; })
+            .filter(function (id) { return Number.isSafeInteger(id) && id > 0; });
+          if (ids.length) url += '?cart_product_ids=' + encodeURIComponent(ids.join(','));
+        }
+        return fetch(url);
+      }).then(function (r) {
+        if (!r.ok) throw new Error('Upsell settings unavailable');
+        return r.json();
+      });
     Promise.all([
-      fetch(window.Shopify.routes.root + 'apps/cart-upsell').then(function (r) {
-        return r.json();
-      }),
-      fetch(window.Shopify.routes.root + 'cart.js').then(function (r) {
-        return r.json();
-      }),
+      settingsRequest,
+      cartRequest,
+      isProductPage
+        ? fetch(window.Shopify.routes.root + 'recommendations/products.json?product_id=' +
+            productPageId + '&limit=10&intent=complementary').then(function (r) {
+            if (!r.ok) throw new Error('Recommendations unavailable');
+            return r.json();
+          })
+        : Promise.resolve(null),
     ])
       .then(function (results) {
         var config = results[0];
         var cart = results[1];
-        return { config: config, cart: cart };
+        return { config: config, cart: cart, recommendations: results[2] };
       })
       .then(function (data) {
         var config = data.config;
         var cart = data.cart;
-        if (!cart.items || cart.items.length === 0) {
+        if (!isProductPage && (!cart.items || cart.items.length === 0)) {
           return { config: config, cart: cart, products: [] };
         }
-        var cartProductIds = cart.items.map(function (item) {
+        var cartProductIds = (cart.items || []).map(function (item) {
           return item.product_id;
         });
-        var excludedProductIds = config.excludedProductIds || [];
+        var excludedProductIds = isProductPage ? [] : config.excludedProductIds || [];
+        var candidates = isProductPage
+          ? (data.recommendations.products || []).map(function (product) {
+              var variants = product.variants || [];
+              var variant = variants.find(function (candidate) { return candidate.available; });
+              if (!variant) return null;
+              var image = variant.featured_image && variant.featured_image.src ||
+                product.featured_image || product.images && product.images[0] || null;
+              return {
+                productId: Number(product.id),
+                variantId: Number(variant.id),
+                title: product.title,
+                handle: product.handle,
+                url: product.url || window.Shopify.routes.root + 'products/' +
+                  encodeURIComponent(product.handle),
+                image: image,
+                fallbackImage: image,
+                price: Number(variant.price) / 100,
+                currency: cart.currency,
+                variants: variants,
+                options: (product.options || []).map(function (option) {
+                  return typeof option === 'string' ? option : option.name;
+                }),
+              };
+            }).filter(Boolean)
+          : config.products || [];
 
         var seen = {};
-        var products = (config.products || [])
+        var products = candidates
           .filter(function (product) {
             if (cartProductIds.indexOf(product.productId) !== -1 ||
                 excludedProductIds.indexOf(product.productId) !== -1 ||
@@ -148,7 +197,7 @@
               (config.maxPrice === null || config.maxPrice === undefined ||
                 product.price <= config.maxPrice);
           });
-          if (config.shuffleProducts) {
+          if (!isProductPage && config.shuffleProducts) {
             var key = String(shuffleSeed) + ':' + cart.items.map(function (item) {
               return item.key;
             }).join('|');
@@ -157,7 +206,7 @@
             });
           }
           var limit = Number.isInteger(config.maxProducts) && config.maxProducts >= 1
-            ? Math.min(config.maxProducts, MAX_ITEMS) : 6;
+            ? Math.min(config.maxProducts, isProductPage ? 10 : MAX_ITEMS) : 6;
           return { config: config, cart: cart, products: eligible.slice(0, limit) };
         });
       })
@@ -168,7 +217,8 @@
         var products = data.products;
 
         if (products.length === 0) {
-          if (activeImpressionObserver) activeImpressionObserver.disconnect();
+          var tracking = trackingByRoot.get(root);
+          if (tracking && tracking.observer) tracking.observer.disconnect();
           root.hidden = true;
           return;
         }
@@ -421,7 +471,7 @@
     }
     if (image) prepareImage(image);
     button.addEventListener('click', function () {
-      trackOfferClick(product.productId);
+      trackOfferClick(item.closest('[data-cart-upsell]'), product.productId);
       if (hasVariants && !pickerOpen) {
         pickerOpen = true;
         item.classList.add('cart-upsell__item--expanded');
@@ -521,8 +571,9 @@
       product.variantId = Number(next.id);
       product.price = Number(next.price) / 100;
       product.image = next.featured_image && next.featured_image.src || product.fallbackImage;
-      product.url = window.Shopify.routes.root + 'products/' + encodeURIComponent(product.handle) +
-        '?variant=' + next.id;
+      var productUrl = new URL(product.url, window.location.origin);
+      productUrl.searchParams.set('variant', String(next.id));
+      product.url = productUrl.pathname + productUrl.search;
       item.querySelector('.cart-upsell__price').textContent = formatter
         ? formatter.format(product.price) : String(product.price);
       item.querySelectorAll('a').forEach(function (link) { link.href = product.url; });
@@ -560,7 +611,7 @@
 
     item.querySelectorAll('a').forEach(function (link) {
       link.addEventListener('click', function () {
-        trackOfferClick(product.productId);
+        trackOfferClick(item.closest('[data-cart-upsell]'), product.productId);
       });
     });
 
@@ -651,48 +702,61 @@
     }).catch(function () {});
   }
 
-  function trackOfferClick(productId) {
-    if (clickedForExposure[productId]) return;
-    markImpressions([productId]);
-    clickedForExposure[productId] = true;
+  function trackingFor(root) {
+    var tracking = trackingByRoot.get(root);
+    if (!tracking) {
+      tracking = { key: '', impressed: {}, clicked: {}, observer: null };
+      trackingByRoot.set(root, tracking);
+    }
+    return tracking;
+  }
+
+  function trackOfferClick(root, productId) {
+    if (!root) return;
+    var tracking = trackingFor(root);
+    if (tracking.clicked[productId]) return;
+    markImpressions(root, [productId]);
+    tracking.clicked[productId] = true;
     trackEvent('click', productId);
   }
 
-  function markImpressions(productIds) {
+  function markImpressions(root, productIds) {
+    var tracking = trackingFor(root);
     var newIds = productIds.filter(function (id) {
-      if (impressedForExposure[id]) return false;
-      impressedForExposure[id] = true;
+      if (tracking.impressed[id]) return false;
+      tracking.impressed[id] = true;
       return true;
     });
     if (newIds.length) trackEvent('impression', newIds);
   }
 
   function observeOfferImpressions(root, impressionKey) {
-    if (activeImpressionObserver) activeImpressionObserver.disconnect();
-    if (impressionKey !== lastImpressionKey) {
-      lastImpressionKey = impressionKey;
-      impressedForExposure = {};
-      clickedForExposure = {};
+    var tracking = trackingFor(root);
+    if (tracking.observer) tracking.observer.disconnect();
+    if (impressionKey !== tracking.key) {
+      tracking.key = impressionKey;
+      tracking.impressed = {};
+      tracking.clicked = {};
     }
 
     var items = root.querySelectorAll('.cart-upsell__item');
     if (!('IntersectionObserver' in window)) {
-      markImpressions(Array.from(items, function (item) {
+      markImpressions(root, Array.from(items, function (item) {
         return Number(item.dataset.cartUpsellProductId);
       }));
       return;
     }
 
-    activeImpressionObserver = new IntersectionObserver(function (entries) {
-      if (!root.isConnected || impressionKey !== lastImpressionKey) return;
-      markImpressions(entries.filter(function (entry) {
+    tracking.observer = new IntersectionObserver(function (entries) {
+      if (!root.isConnected || impressionKey !== tracking.key) return;
+      markImpressions(root, entries.filter(function (entry) {
         return entry.isIntersecting && entry.intersectionRatio >= 0.5;
       }).map(function (entry) {
         return Number(entry.target.dataset.cartUpsellProductId);
       }));
     }, { threshold: 0.5 });
     items.forEach(function (item) {
-      activeImpressionObserver.observe(item);
+      tracking.observer.observe(item);
     });
   }
 

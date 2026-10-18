@@ -1,6 +1,7 @@
 {
   "cart_upsell": {
     "heading": "Complete your order",
+    "product_heading": "Pairs well with",
     "add": "Add",
     "select": "Select",
     "previous": "Previous",

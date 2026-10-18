@@ -2,6 +2,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { parseProductDesign } from "../product-design.server";
 
 const MAX_PRODUCTS = 20;
 
@@ -25,6 +26,7 @@ type RawProduct = {
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.public.appProxy(request);
+  const isProductWidget = new URL(request.url).searchParams.get("widget") === "product";
 
   if (!session || !admin) {
     return json({
@@ -63,26 +65,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const settings = await prisma.cartUpsellSettings.findUnique({
     where: { shop: session.shop },
   });
+  const design = isProductWidget ? parseProductDesign(settings?.productDesign) : settings;
 
   const direction = settings?.direction ?? "ltr";
   const displayMode = settings?.displayMode ?? "list";
   const sourceType = settings?.sourceType === "manual" ? "manual" : "collection";
-  const headingText = settings?.headingText ?? null;
-  const buttonColor = settings?.buttonColor ?? null;
-  const buttonTextColor = settings?.buttonTextColor ?? null;
-  const buttonBorderRadius = settings?.buttonBorderRadius ?? null;
-  const buttonLabel = settings?.buttonLabel ?? null;
-  const selectButtonLabel = settings?.selectButtonLabel ?? null;
-  const imageSize = settings?.imageSize ?? null;
-  const itemGap = settings?.itemGap ?? null;
-  const swatchShape = settings?.swatchShape ?? "circle";
-  const swatchSize = settings?.swatchSize ?? 28;
-  const swatchBorderWidth = settings?.swatchBorderWidth ?? 1;
-  const swatchBorderColor = settings?.swatchBorderColor ?? null;
-  const selectedOutlineColor = settings?.selectedOutlineColor ?? null;
-  const selectedOutlineWidth = settings?.selectedOutlineWidth ?? null;
-  const otherOptionStyle = settings?.otherOptionStyle ?? "boxes";
-  const variantLayout = settings?.variantLayout ?? "select";
+  const headingText = design?.headingText ?? null;
+  const buttonColor = design?.buttonColor ?? null;
+  const buttonTextColor = design?.buttonTextColor ?? null;
+  const buttonBorderRadius = design?.buttonBorderRadius ?? null;
+  const buttonLabel = design?.buttonLabel ?? null;
+  const selectButtonLabel = design?.selectButtonLabel ?? null;
+  const imageSize = design?.imageSize ?? null;
+  const itemGap = design?.itemGap ?? null;
+  const swatchShape = design?.swatchShape ?? "circle";
+  const swatchSize = design?.swatchSize ?? 28;
+  const swatchBorderWidth = design?.swatchBorderWidth ?? 1;
+  const swatchBorderColor = design?.swatchBorderColor ?? null;
+  const selectedOutlineColor = design?.selectedOutlineColor ?? null;
+  const selectedOutlineWidth = design?.selectedOutlineWidth ?? null;
+  const otherOptionStyle = design?.otherOptionStyle ?? "boxes";
+  const variantLayout = design?.variantLayout ?? "select";
   const maxProducts = settings?.maxProducts ?? 6;
   const shuffleProducts = settings?.shuffleProducts ?? false;
   let excludedProductIds: number[] = [];
@@ -95,6 +98,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   } catch {
     excludedProductIds = [];
   }
+  const cartProductIds = new Set(
+    (new URL(request.url).searchParams.get("cart_product_ids") ?? "")
+      .split(",")
+      .slice(0, 250)
+      .map(Number)
+      .filter((id) => Number.isSafeInteger(id) && id > 0),
+  );
 
   const shopResponse = await admin.graphql(
     `#graphql
@@ -108,7 +118,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   let manualProducts: RawProduct[] = [];
   let collectionProducts: RawProduct[] = [];
 
-  if (sourceType === "manual") {
+  if (!isProductWidget && sourceType === "manual") {
     const productIds: string[] = settings ? JSON.parse(settings.productIds) : [];
     if (productIds.length > 0) {
       const response = await admin.graphql(
@@ -139,34 +149,52 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
   }
 
-  if (sourceType === "collection" && settings?.collectionId) {
-    const response = await admin.graphql(
-      `#graphql
-        query GetCollectionProducts($id: ID!, $first: Int!) {
-          collection(id: $id) {
-            products(first: $first) {
-              nodes {
-                id
-                legacyResourceId
-                title
-                handle
-                featuredImage { url altText }
-                options { name }
-                variants(first: 10) {
-                  nodes {
-                    legacyResourceId availableForSale price
-                    selectedOptions { name value }
-                    image { url }
+  if (!isProductWidget && sourceType === "collection" && settings?.collectionId) {
+    let cursor: string | null = null;
+    let hasNextPage = true;
+    while (hasNextPage && collectionProducts.length < Math.min(maxProducts, MAX_PRODUCTS)) {
+      const response: Response = await admin.graphql(
+        `#graphql
+          query GetCollectionProducts($id: ID!, $after: String) {
+            collection(id: $id) {
+              products(first: 50, after: $after) {
+                nodes {
+                  id
+                  legacyResourceId
+                  title
+                  handle
+                  featuredImage { url altText }
+                  options { name }
+                  variants(first: 10) {
+                    nodes {
+                      legacyResourceId availableForSale price
+                      selectedOptions { name value }
+                      image { url }
+                    }
                   }
                 }
+                pageInfo { hasNextPage endCursor }
               }
             }
-          }
-        }`,
-      { variables: { id: settings.collectionId, first: MAX_PRODUCTS } },
-    );
-    const json = await response.json();
-    collectionProducts = json.data?.collection?.products?.nodes ?? [];
+          }`,
+        { variables: { id: settings.collectionId, after: cursor } },
+      );
+      const result: {
+        data?: { collection?: { products?: {
+          nodes: RawProduct[];
+          pageInfo: { hasNextPage: boolean; endCursor: string | null };
+        } } };
+      } = await response.json();
+      const page = result.data?.collection?.products;
+      if (!page) break;
+      collectionProducts.push(...page.nodes.filter((product) =>
+        !cartProductIds.has(Number(product.legacyResourceId)) &&
+        !excludedProductIds.includes(Number(product.legacyResourceId)) &&
+        product.variants.nodes.some((variant) => variant.availableForSale),
+      ).slice(0, Math.min(maxProducts, MAX_PRODUCTS) - collectionProducts.length));
+      cursor = page.pageInfo?.endCursor ?? null;
+      hasNextPage = Boolean(page.pageInfo?.hasNextPage && cursor);
+    }
   }
 
   const toOffers = (rawProducts: RawProduct[]) => rawProducts

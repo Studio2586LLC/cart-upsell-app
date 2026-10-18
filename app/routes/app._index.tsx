@@ -122,6 +122,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     maxProducts: String(settings?.maxProducts ?? 6),
     shuffleProducts: settings?.shuffleProducts ?? false,
     themeEditorUrl: `https://${session.shop}/admin/themes/current/editor?context=apps&activateAppId=${process.env.SHOPIFY_API_KEY}/cart-upsell-embed`,
+    productThemeEditorUrl: `https://${session.shop}/admin/themes/current/editor?template=product&addAppBlockId=${process.env.SHOPIFY_API_KEY}/product-upsell&target=newAppsSection`,
   };
 };
 
@@ -332,6 +333,11 @@ export default function Settings() {
                           activation.handle === "cart-upsell" && activation.status === "active")
                           ? "Placed in published theme" : "Not placed"}
                       </Text>
+                      <Text as="p">
+                        Product-page block: {themeActivations.some((activation) =>
+                          activation.handle === "product-upsell" && activation.status === "active")
+                          ? "Placed in published theme" : "Not placed"}
+                      </Text>
                     </>
                   )}
                   <Text as="p" tone="subdued">
@@ -339,7 +345,10 @@ export default function Settings() {
                     your cart page. Check the storefront after saving your theme.
                   </Text>
                   <a href={data.themeEditorUrl} target="_blank" rel="noreferrer">
-                    Open theme editor
+                    Set up cart drawer
+                  </a>
+                  <a href={data.productThemeEditorUrl} target="_blank" rel="noreferrer">
+                    Add product-page upsell block
                   </a>
                 </BlockStack>
               </Card>
@@ -383,7 +392,11 @@ export default function Settings() {
               <div id="products"><Card>
                 <BlockStack gap="400">
                   <Text as="h2" variant="headingMd">
-                    Products to upsell
+                    Cart products to upsell
+                  </Text>
+                  <Text as="p" tone="subdued">
+                    Product-page upsells use each product’s complementary products from Shopify
+                    Search & Discovery. Assign them there or use its Bulk Editor to update many products.
                   </Text>
                   <InlineStack gap="400">
                     <RadioButton

@@ -1,0 +1,22 @@
+{% if product %}
+  <div class="cart-upsell" data-cart-upsell data-cart-upsell-mode="product"
+    data-cart-upsell-product-id="{{ product.id }}"
+    data-cart-upsell-heading="{{ 'cart_upsell.product_heading' | t | escape }}"
+    data-cart-upsell-add="{{ 'cart_upsell.add' | t | escape }}"
+    data-cart-upsell-select="{{ 'cart_upsell.select' | t | escape }}"
+    data-cart-upsell-previous="{{ 'cart_upsell.previous' | t | escape }}"
+    data-cart-upsell-next="{{ 'cart_upsell.next' | t | escape }}"
+    {{ block.shopify_attributes }} hidden></div>
+
+  {{ 'cart-upsell.css' | asset_url | stylesheet_tag }}
+  <script src="{{ 'cart-upsell.js' | asset_url }}" defer></script>
+{% endif %}
+
+{% schema %}
+{
+  "name": "Product page upsell",
+  "target": "section",
+  "enabled_on": { "templates": ["product"] },
+  "settings": []
+}
+{% endschema %}

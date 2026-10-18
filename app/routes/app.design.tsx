@@ -11,12 +11,38 @@ import {
   Select,
   Button,
   Box,
+  Icon,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
+import { CartIcon, ProductIcon } from "@shopify/polaris-icons";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { defaultProductDesign, parseProductDesign, type WidgetDesign } from "../product-design.server";
 import styles from "../styles/design.module.css";
 import { ProductThumbnail } from "../components/ProductThumbnail";
+
+type Widget = "cart" | "product";
+
+function toFormValues(design: WidgetDesign) {
+  return {
+    headingText: design.headingText ?? "",
+    buttonLabel: design.buttonLabel ?? "",
+    selectButtonLabel: design.selectButtonLabel ?? "",
+    buttonColor: design.buttonColor ?? "",
+    buttonTextColor: design.buttonTextColor ?? "",
+    buttonBorderRadius: design.buttonBorderRadius?.toString() ?? "",
+    imageSize: design.imageSize?.toString() ?? "",
+    itemGap: design.itemGap?.toString() ?? "",
+    swatchShape: design.swatchShape,
+    swatchSize: design.swatchSize.toString(),
+    swatchBorderWidth: design.swatchBorderWidth.toString(),
+    swatchBorderColor: design.swatchBorderColor ?? "",
+    selectedOutlineColor: design.selectedOutlineColor ?? "",
+    selectedOutlineWidth: design.selectedOutlineWidth?.toString() ?? "",
+    otherOptionStyle: design.otherOptionStyle,
+    variantLayout: design.variantLayout,
+  };
+}
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -26,28 +52,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   return {
-    headingText: settings?.headingText ?? "",
-    buttonLabel: settings?.buttonLabel ?? "",
-    selectButtonLabel: settings?.selectButtonLabel ?? "",
-    buttonColor: settings?.buttonColor ?? "",
-    buttonTextColor: settings?.buttonTextColor ?? "",
-    buttonBorderRadius: settings?.buttonBorderRadius?.toString() ?? "",
-    imageSize: settings?.imageSize?.toString() ?? "",
-    itemGap: settings?.itemGap?.toString() ?? "",
-    swatchShape: settings?.swatchShape ?? "circle",
-    swatchSize: (settings?.swatchSize ?? 28).toString(),
-    swatchBorderWidth: (settings?.swatchBorderWidth ?? 1).toString(),
-    swatchBorderColor: settings?.swatchBorderColor ?? "",
-    selectedOutlineColor: settings?.selectedOutlineColor ?? "",
-    selectedOutlineWidth: settings?.selectedOutlineWidth?.toString() ?? "",
-    otherOptionStyle: settings?.otherOptionStyle ?? "boxes",
-    variantLayout: settings?.variantLayout ?? "select",
+    cart: toFormValues(settings ?? defaultProductDesign),
+    product: toFormValues(parseProductDesign(settings?.productDesign)),
   };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const formData = await request.formData();
+  const widget: Widget = formData.get("widget") === "product" ? "product" : "cart";
 
   const headingText = formData.get("headingText")?.toString().trim().slice(0, 120) || null;
   const buttonLabel = formData.get("buttonLabel")?.toString().trim().slice(0, 60) || null;
@@ -91,7 +104,35 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         !/^#[0-9a-f]{6}$/i.test(color)) ||
       (buttonBorderRadius !== null &&
         (!Number.isInteger(buttonBorderRadius) || buttonBorderRadius < 0 || buttonBorderRadius > 60))) {
-    return { ok: false, error: "Enter valid colors, sizes, and corner radius." };
+    return { ok: false, error: "Enter valid colors, sizes, and corner radius.", widget };
+  }
+
+  const design: WidgetDesign = {
+    headingText,
+    buttonLabel,
+    selectButtonLabel,
+    buttonColor,
+    buttonTextColor,
+    buttonBorderRadius,
+    imageSize,
+    itemGap,
+    swatchShape: swatchShape!,
+    swatchSize: swatchSize!,
+    swatchBorderWidth: swatchBorderWidth!,
+    swatchBorderColor,
+    selectedOutlineColor,
+    selectedOutlineWidth,
+    otherOptionStyle: otherOptionStyle!,
+    variantLayout: variantLayout!,
+  };
+
+  if (widget === "product") {
+    await prisma.cartUpsellSettings.upsert({
+      where: { shop: session.shop },
+      create: { shop: session.shop, productDesign: JSON.stringify(design) },
+      update: { productDesign: JSON.stringify(design) },
+    });
+    return { ok: true, widget };
   }
 
   await prisma.cartUpsellSettings.upsert({
@@ -135,7 +176,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     },
   });
 
-  return { ok: true };
+  return { ok: true, widget };
 };
 
 function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
@@ -212,26 +253,37 @@ export default function Design() {
   const fetcher = useFetcher<typeof action>();
   const shopify = useAppBridge();
 
-  const [headingText, setHeadingText] = useState(data.headingText);
-  const [buttonLabel, setButtonLabel] = useState(data.buttonLabel);
-  const [selectButtonLabel, setSelectButtonLabel] = useState(data.selectButtonLabel);
-  const [buttonColor, setButtonColor] = useState(data.buttonColor);
-  const [buttonTextColor, setButtonTextColor] = useState(
-    data.buttonTextColor,
-  );
-  const [buttonBorderRadius, setButtonBorderRadius] = useState(
-    data.buttonBorderRadius,
-  );
-  const [imageSize, setImageSize] = useState(data.imageSize);
-  const [itemGap, setItemGap] = useState(data.itemGap);
-  const [swatchShape, setSwatchShape] = useState(data.swatchShape);
-  const [swatchSize, setSwatchSize] = useState(data.swatchSize);
-  const [swatchBorderWidth, setSwatchBorderWidth] = useState(data.swatchBorderWidth);
-  const [swatchBorderColor, setSwatchBorderColor] = useState(data.swatchBorderColor);
-  const [selectedOutlineColor, setSelectedOutlineColor] = useState(data.selectedOutlineColor);
-  const [selectedOutlineWidth, setSelectedOutlineWidth] = useState(data.selectedOutlineWidth);
-  const [otherOptionStyle, setOtherOptionStyle] = useState(data.otherOptionStyle);
-  const [variantLayout, setVariantLayout] = useState(data.variantLayout);
+  const [activeWidget, setActiveWidget] = useState<Widget>("cart");
+  const [designs, setDesigns] = useState({ cart: data.cart, product: data.product });
+  const design = designs[activeWidget];
+  const {
+    headingText, buttonLabel, selectButtonLabel, buttonColor, buttonTextColor,
+    buttonBorderRadius, imageSize, itemGap, swatchShape, swatchSize,
+    swatchBorderWidth, swatchBorderColor, selectedOutlineColor,
+    selectedOutlineWidth, otherOptionStyle, variantLayout,
+  } = design;
+  const setField = (field: keyof typeof design, value: string) => {
+    setDesigns((previous) => ({
+      ...previous,
+      [activeWidget]: { ...previous[activeWidget], [field]: value },
+    }));
+  };
+  const setHeadingText = (value: string) => setField("headingText", value);
+  const setButtonLabel = (value: string) => setField("buttonLabel", value);
+  const setSelectButtonLabel = (value: string) => setField("selectButtonLabel", value);
+  const setButtonColor = (value: string) => setField("buttonColor", value);
+  const setButtonTextColor = (value: string) => setField("buttonTextColor", value);
+  const setButtonBorderRadius = (value: string) => setField("buttonBorderRadius", value);
+  const setImageSize = (value: string) => setField("imageSize", value);
+  const setItemGap = (value: string) => setField("itemGap", value);
+  const setSwatchShape = (value: string) => setField("swatchShape", value);
+  const setSwatchSize = (value: string) => setField("swatchSize", value);
+  const setSwatchBorderWidth = (value: string) => setField("swatchBorderWidth", value);
+  const setSwatchBorderColor = (value: string) => setField("swatchBorderColor", value);
+  const setSelectedOutlineColor = (value: string) => setField("selectedOutlineColor", value);
+  const setSelectedOutlineWidth = (value: string) => setField("selectedOutlineWidth", value);
+  const setOtherOptionStyle = (value: string) => setField("otherOptionStyle", value);
+  const setVariantLayout = (value: string) => setField("variantLayout", value);
   const [previewPickerOpen, setPreviewPickerOpen] = useState(false);
   const [previewColor, setPreviewColor] = useState("Burgundy");
   const [previewSize, setPreviewSize] = useState("Small");
@@ -262,7 +314,7 @@ export default function Design() {
 
   useEffect(() => {
     if (fetcher.data?.ok) {
-      shopify.toast.show("Design saved");
+      shopify.toast.show(`${fetcher.data.widget === "product" ? "Product" : "Cart"} design saved`);
     } else if (fetcher.data && "error" in fetcher.data && fetcher.data.error) {
       shopify.toast.show(fetcher.data.error, { isError: true });
     }
@@ -270,10 +322,7 @@ export default function Design() {
 
   const handleSave = () => {
     fetcher.submit(
-      { headingText, buttonLabel, selectButtonLabel, buttonColor, buttonTextColor,
-        buttonBorderRadius, imageSize, itemGap, swatchShape, swatchSize,
-        swatchBorderWidth, swatchBorderColor, selectedOutlineColor, selectedOutlineWidth,
-        otherOptionStyle, variantLayout },
+      { widget: activeWidget, ...design },
       { method: "POST" },
     );
   };
@@ -283,15 +332,37 @@ export default function Design() {
       <TitleBar title="Design" />
       <BlockStack gap="500">
         <div className={styles.layout}>
+          <nav className={styles.widgetNav} aria-label="Widget design">
+            <button type="button" className={styles.widgetNavButton}
+              aria-pressed={activeWidget === "cart"}
+              onClick={() => { setActiveWidget("cart"); setPreviewPickerOpen(false); }}>
+              <Icon source={CartIcon} />
+              <span>Cart widget</span>
+            </button>
+            <button type="button" className={styles.widgetNavButton}
+              aria-pressed={activeWidget === "product"}
+              onClick={() => { setActiveWidget("product"); setPreviewPickerOpen(false); }}>
+              <Icon source={ProductIcon} />
+              <span>Product widget</span>
+            </button>
+          </nav>
           <div className={styles.settings}>
             <BlockStack gap="500">
+              <div>
+                <Text as="h2" variant="headingLg">
+                  {activeWidget === "cart" ? "Cart widget" : "Product widget"}
+                </Text>
+                {activeWidget === "product" && <Text as="p" tone="subdued">
+                  Offers come from each product’s complementary products in Search & Discovery.
+                </Text>}
+              </div>
               <SettingsSection title="Copy">
                 <BlockStack gap="400">
                   <TextField
                     label="Heading"
                     value={headingText}
                     onChange={setHeadingText}
-                    placeholder="Complete your order"
+                    placeholder={activeWidget === "cart" ? "Complete your order" : "Pairs well with"}
                     autoComplete="off"
                     helpText="Shown above the upsell products"
                   />
@@ -396,7 +467,7 @@ export default function Design() {
                   loading={isSaving}
                   onClick={handleSave}
                 >
-                  Save
+                  Save {activeWidget} design
                 </Button>
               </InlineStack>
             </BlockStack>
@@ -406,20 +477,29 @@ export default function Design() {
             <BlockStack gap="500">
               <Card>
                 <BlockStack gap="300">
-                  <Text as="h2" variant="headingMd">Preview</Text>
+                  <Text as="h2" variant="headingMd">
+                    {activeWidget === "cart" ? "Cart preview" : "Product preview"}
+                  </Text>
                   <Text as="p" tone="subdued">
                     Illustrative preview. Theme colors and fonts are inherited on the storefront.
                   </Text>
                   <div style={{ border: "1px solid #ddd", padding: 16, borderRadius: 8 }}>
+                    {activeWidget === "product" && <div className={styles.productContext}>
+                      <ProductThumbnail size={52} />
+                      <div>
+                        <div style={{ fontWeight: 600 }}>Example product</div>
+                        <div style={{ opacity: 0.7 }}>$48.00</div>
+                      </div>
+                    </div>}
                     <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 600 }}>
-                      {headingText || "Complete your order"}
+                      {headingText || (activeWidget === "cart" ? "Complete your order" : "Pairs well with")}
                     </div>
                     <div style={{ display: "flex", flexDirection: "column",
                       gap: itemGap === "" ? 12 : Number(itemGap) }}>
                       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 12 }}>
                         <ProductThumbnail size={imageSize === "" ? 64 : Number(imageSize)} />
                         <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>
-                          <div>Sample product</div>
+                          <div>{activeWidget === "cart" ? "Sample product" : "Matching accessory"}</div>
                           <div style={{ opacity: 0.7 }}>$24.00</div>
                           {showPreviewOptions && <>
                           <div style={{ marginTop: 8, fontSize: 10, letterSpacing: "0.06em", opacity: 0.6 }}>COLOR</div>
@@ -471,7 +551,8 @@ export default function Design() {
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
                         <ProductThumbnail size={imageSize === "" ? 64 : Number(imageSize)} />
-                        <div style={{ flex: 1, fontSize: 13 }}>Single variant product<br />
+                        <div style={{ flex: 1, fontSize: 13 }}>
+                          {activeWidget === "cart" ? "Single variant product" : "Care kit"}<br />
                           <span style={{ opacity: 0.7 }}>$18.00</span></div>
                         <button type="button" style={previewButtonStyle}>{buttonLabel || "Add"}</button>
                       </div>

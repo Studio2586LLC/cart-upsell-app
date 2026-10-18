@@ -1,6 +1,7 @@
 {
   "cart_upsell": {
     "heading": "Доповніть своє замовлення",
+    "product_heading": "Добре поєднується з",
     "add": "Додати",
     "select": "Вибрати",
     "previous": "Назад",

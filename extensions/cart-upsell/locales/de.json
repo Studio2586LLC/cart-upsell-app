@@ -1,6 +1,7 @@
 {
   "cart_upsell": {
     "heading": "Bestellung ergänzen",
+    "product_heading": "Passt gut dazu",
     "add": "Hinzufügen",
     "select": "Auswählen",
     "previous": "Zurück",

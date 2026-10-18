@@ -68,6 +68,7 @@ model CartUpsellSettings {
   selectedOutlineWidth Int?
   otherOptionStyle   String  @default("boxes") // "boxes" | "dropdown"
   variantLayout      String  @default("select") // "select" | "regular"
+  productDesign      String  @default("{}") // JSON design overrides for the product-page widget
 
   updatedAt DateTime @updatedAt
 }
